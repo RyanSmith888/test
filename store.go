@@ -367,6 +367,12 @@ func (s *Store) UpdateAccountToken(id int64, token string, expiry int64) error {
 	return err
 }
 
+func (s *Store) GetAccountRefreshToken(id int64) (string, error) {
+	var rt string
+	err := s.db.QueryRow("SELECT refresh_token FROM accounts WHERE id=?", id).Scan(&rt)
+	return rt, err
+}
+
 func (s *Store) UpdateAccountRefreshToken(id int64, refreshToken string) error {
 	_, err := s.db.Exec(
 		"UPDATE accounts SET refresh_token=?, updated_at=datetime('now') WHERE id=?",

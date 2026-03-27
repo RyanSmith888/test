@@ -302,8 +302,8 @@ func (ph *ProxyHandler) getTransport(proxyURL string) http.RoundTripper {
 	} else {
 		u, err := url.Parse(proxyURL)
 		if err != nil {
-			logWarn("invalid proxy URL %q, using direct", proxyURL)
-			return ph.getTransport("") // fallback 直连
+			logWarn("invalid proxy URL %q, falling back to direct", proxyURL)
+			return ph.getTransport("")
 		}
 
 		switch u.Scheme {
@@ -316,6 +316,7 @@ func (ph *ProxyHandler) getTransport(proxyURL string) http.RoundTripper {
 				MaxIdleConnsPerHost: 20,
 				IdleConnTimeout:     90 * time.Second,
 				TLSHandshakeTimeout: 15 * time.Second,
+				ForceAttemptHTTP2:   true,
 			}
 		case "http", "https":
 			transport = &http.Transport{
@@ -327,7 +328,7 @@ func (ph *ProxyHandler) getTransport(proxyURL string) http.RoundTripper {
 				ForceAttemptHTTP2:   false, // HTTP 代理不支持 H2
 			}
 		default:
-			logWarn("unsupported proxy scheme %q, using direct", u.Scheme)
+			logWarn("unsupported proxy scheme %q, falling back to direct", u.Scheme)
 			return ph.getTransport("")
 		}
 	}

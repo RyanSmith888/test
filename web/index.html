@@ -255,7 +255,7 @@ tr:hover td { background: #fafbfc; }
       <input x-model.number="newAccount.max_concur" placeholder="最大并发数 (默认 5)" type="number" class="input">
       <div class="lg:col-span-3">
         <textarea x-model="newAccount.refresh_token" rows="2" class="input w-full font-mono text-xs"
-          placeholder="Refresh Token（可选，自动续期）- 从 ~/.claude/.credentials.json 复制"></textarea>
+          placeholder="Refresh Token（可选，供手动刷新备用）- 从 ~/.claude/.credentials.json 复制"></textarea>
       </div>
     </div>
     <div class="flex gap-2 mt-3">
@@ -314,12 +314,7 @@ tr:hover td { background: #fafbfc; }
                 <span class="badge badge-red text-[11px]">无代理</span>
               </template>
             </td>
-            <td class="text-xs">
-              <template x-if="a.token_expiry===0"><span class="text-green-600 font-medium">永不过期</span></template>
-              <template x-if="a.token_expiry>0 && a.token_expiry>Date.now()/1000+7*86400"><span class="text-green-600" x-text="Math.floor((a.token_expiry-Date.now()/1000)/86400)+'天'"></span></template>
-              <template x-if="a.token_expiry>0 && a.token_expiry>Date.now()/1000 && a.token_expiry<=Date.now()/1000+7*86400"><span class="text-amber-600 font-medium" x-text="Math.floor((a.token_expiry-Date.now()/1000)/3600)+'小时'"></span></template>
-              <template x-if="a.token_expiry>0 && a.token_expiry<=Date.now()/1000"><span class="text-red-500 font-medium">已过期</span></template>
-            </td>
+            <td class="text-xs" x-text="tokenExpiryText(a)" :class="tokenExpiryClass(a)"></td>
             <td class="font-mono text-xs text-gray-600" x-text="(a.total_reqs||0).toLocaleString()"></td>
             <td>
               <button @click="confirmDelete('account', a.id, a.name)" class="btn btn-danger btn-sm">删除</button>
@@ -618,12 +613,17 @@ function gateway() {
     get accountsWithState() {
       const stateMap = {};
       for (const s of this.poolStates) { stateMap[s.id] = s; }
-      return this.accounts.map(a => ({
-        ...a,
-        _rpm_count: stateMap[a.id]?.rpm_count || 0,
-        _in_flight: stateMap[a.id]?.in_flight || 0,
-        _cool_remaining_s: stateMap[a.id]?.cool_remaining_s || 0,
-      }));
+      return this.accounts.map(a => {
+        const s = stateMap[a.id];
+        return {
+          ...a,
+          _rpm_count: s?.rpm_count || 0,
+          _in_flight: s?.in_flight || 0,
+          _cool_remaining_s: s?.cool_remaining_s || 0,
+          _token_remaining_s: s?.token_remaining_s,
+          _token_expiry: s?.token_expiry || a.token_expiry,
+        };
+      });
     },
 
     // ---- Password helpers ----
@@ -890,6 +890,26 @@ function gateway() {
     },
     statusText(s) {
       return { active:'正常', disabled:'已禁用', refreshing:'刷新中', cooldown:'冷却中' }[s] || s;
+    },
+    tokenExpiryText(a) {
+      const expiry = a._token_expiry || a.token_expiry;
+      if (!expiry || expiry === 0) return '永不过期';
+      const rem = (a._token_remaining_s !== undefined) ? a._token_remaining_s : (expiry - Date.now()/1000);
+      if (rem <= 0) return '已过期';
+      if (rem < 3600) return '不足1小时';
+      if (rem < 86400) return '不足1天';
+      if (rem < 604800) return '不足7天';
+      return '正常';
+    },
+    tokenExpiryClass(a) {
+      const expiry = a._token_expiry || a.token_expiry;
+      if (!expiry || expiry === 0) return 'text-gray-400';
+      const rem = (a._token_remaining_s !== undefined) ? a._token_remaining_s : (expiry - Date.now()/1000);
+      if (rem <= 0) return 'text-red-500 font-medium';
+      if (rem < 3600) return 'text-red-500 font-medium';
+      if (rem < 86400) return 'text-amber-600 font-medium';
+      if (rem < 604800) return 'text-amber-600';
+      return 'text-green-600';
     },
     shortModel(m) { return (m||'unknown').replace('claude-','').replace('-20250514','').replace('-20241022',''); },
     toast(msg, type='info') {

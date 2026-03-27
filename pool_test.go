@@ -241,40 +241,11 @@ func TestSessionAffinity_FallbackOnUnhealthy(t *testing.T) {
 // Token Refresh Tests
 // ============================================================================
 
-func TestTokenRefresh_TriggersRefreshWithToken(t *testing.T) {
+func TestTokenRefresh_WarnsButKeepsActive(t *testing.T) {
 	store, cfg := setupTestStore(t)
 	cfg.TokenRefreshLeadTime = 30 * time.Minute
 
-	// Expires in 20 minutes (within 30 min lead time), has refresh token
-	expiry := time.Now().Unix() + 1200
-	store.CreateAccount("expiring", "old-tok", "", "fake-refresh-token", 60, 5, expiry)
-
-	pool := NewPool(store, cfg)
-	pool.Start()
-	defer pool.Stop()
-
-	// checkTokenExpiry should attempt async refresh (will fail with fake token, but won't panic)
-	pool.checkTokenExpiry()
-
-	// Give async goroutine a moment to run
-	time.Sleep(500 * time.Millisecond)
-
-	// Account should still be active (refresh attempt happens async)
-	accts, _ := store.ListAccounts()
-	if len(accts) != 1 {
-		t.Fatalf("expected 1 account, got %d", len(accts))
-	}
-	// Status stays active since refresh is async and the OAuth call will fail with fake token
-	if accts[0].Status != "active" {
-		t.Errorf("expected 'active', got %q", accts[0].Status)
-	}
-}
-
-func TestTokenRefresh_NoActionWithoutRefreshToken(t *testing.T) {
-	store, cfg := setupTestStore(t)
-	cfg.TokenRefreshLeadTime = 30 * time.Minute
-
-	// Expires in 20 minutes but NO refresh token — should be skipped
+	// Expires in 20 minutes (within 30 min lead time)
 	expiry := time.Now().Unix() + 1200
 	store.CreateAccount("expiring", "old-tok", "", "", 60, 5, expiry)
 
@@ -282,11 +253,37 @@ func TestTokenRefresh_NoActionWithoutRefreshToken(t *testing.T) {
 	pool.Start()
 	defer pool.Stop()
 
+	// checkTokenExpiry should only log a warning, NOT change status
+	pool.checkTokenExpiry()
+
+	accts, _ := store.ListAccounts()
+	if len(accts) != 1 {
+		t.Fatalf("expected 1 account, got %d", len(accts))
+	}
+	// Account must stay active — no longer marks as "refreshing"
+	if accts[0].Status != "active" {
+		t.Errorf("expected 'active', got %q", accts[0].Status)
+	}
+}
+
+func TestTokenRefresh_WarnsOnExpired(t *testing.T) {
+	store, cfg := setupTestStore(t)
+	cfg.TokenRefreshLeadTime = 30 * time.Minute
+
+	// Already expired
+	expiry := time.Now().Unix() - 100
+	store.CreateAccount("expired", "old-tok", "", "", 60, 5, expiry)
+
+	pool := NewPool(store, cfg)
+	pool.Start()
+	defer pool.Stop()
+
+	// Should log warning but keep status active
 	pool.checkTokenExpiry()
 
 	accts, _ := store.ListAccounts()
 	if accts[0].Status != "active" {
-		t.Errorf("expected 'active' (no refresh token, no action), got %q", accts[0].Status)
+		t.Errorf("expected 'active' (warn only, no status change), got %q", accts[0].Status)
 	}
 }
 

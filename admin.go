@@ -141,10 +141,11 @@ func (ah *AdminHandler) updateAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Name        *string `json:"name"`
-		Fingerprint *string `json:"fingerprint"`
-		RPM         *int    `json:"rpm"`
-		MaxConcur   *int    `json:"max_concur"`
+		Name         *string `json:"name"`
+		Fingerprint  *string `json:"fingerprint"`
+		RefreshToken *string `json:"refresh_token"`
+		RPM          *int    `json:"rpm"`
+		MaxConcur    *int    `json:"max_concur"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, 400, "invalid json")
@@ -177,6 +178,10 @@ func (ah *AdminHandler) updateAccount(w http.ResponseWriter, r *http.Request) {
 	if err := ah.store.UpdateAccount(id, name, fp, rpm, mc); err != nil {
 		writeError(w, 500, err.Error())
 		return
+	}
+	// Update refresh_token if provided
+	if req.RefreshToken != nil {
+		ah.store.UpdateAccountRefreshToken(id, *req.RefreshToken)
 	}
 	ah.pool.Reload()
 	writeJSON(w, 200, map[string]string{"status": "updated"})
