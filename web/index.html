@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claude Gateway Console</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+      colors: {
+        surface: { 50: '#f8fafc', 100: '#1e293b', 200: '#1a2332', 300: '#151d2b', 400: '#111827', 500: '#0d1117', 600: '#0a0e14' },
+        accent: { DEFAULT: '#6366f1', light: '#818cf8', dark: '#4f46e5', glow: 'rgba(99,102,241,0.15)' },
+      }
+    }
+  }
+}
+</script>
+<style>
+[x-cloak] { display: none !important; }
+* { scrollbar-width: thin; scrollbar-color: #334155 transparent; }
+body { background: #0a0e14; color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; }
+.glass { background: rgba(30,41,59,0.6); backdrop-filter: blur(12px); border: 1px solid rgba(71,85,105,0.3); }
+.glass-hover:hover { background: rgba(30,41,59,0.8); border-color: rgba(99,102,241,0.4); }
+.stat-card { background: linear-gradient(135deg, rgba(30,41,59,0.8), rgba(15,23,42,0.9)); border: 1px solid rgba(71,85,105,0.25); }
+.stat-card:hover { border-color: rgba(99,102,241,0.4); transform: translateY(-1px); }
+.glow-border { box-shadow: 0 0 0 1px rgba(99,102,241,0.3), 0 0 20px rgba(99,102,241,0.08); }
+.tab-pill { transition: all 0.2s ease; }
+.tab-pill.active { background: rgba(99,102,241,0.15); color: #a5b4fc; box-shadow: inset 0 -2px 0 #6366f1; }
+.badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 9999px; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
+.badge-green { background: rgba(34,197,94,0.15); color: #4ade80; }
+.badge-yellow { background: rgba(234,179,8,0.15); color: #facc15; }
+.badge-red { background: rgba(239,68,68,0.15); color: #f87171; }
+.badge-blue { background: rgba(59,130,246,0.15); color: #60a5fa; }
+.badge-gray { background: rgba(148,163,184,0.15); color: #94a3b8; }
+.input { background: rgba(15,23,42,0.8); border: 1px solid rgba(71,85,105,0.4); border-radius: 8px; padding: 8px 12px; font-size: 0.875rem; color: #e2e8f0; transition: border-color 0.15s; outline: none; }
+.input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+.input::placeholder { color: #475569; }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; font-size: 0.8125rem; font-weight: 600; transition: all 0.15s; cursor: pointer; border: none; }
+.btn-primary { background: #6366f1; color: white; }
+.btn-primary:hover { background: #4f46e5; box-shadow: 0 4px 12px rgba(99,102,241,0.3); }
+.btn-success { background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
+.btn-success:hover { background: rgba(34,197,94,0.25); }
+.btn-danger { background: rgba(239,68,68,0.1); color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
+.btn-danger:hover { background: rgba(239,68,68,0.2); }
+.btn-ghost { background: transparent; color: #94a3b8; border: 1px solid rgba(71,85,105,0.3); }
+.btn-ghost:hover { background: rgba(71,85,105,0.2); color: #e2e8f0; }
+.btn-sm { padding: 4px 10px; font-size: 0.75rem; }
+table { width: 100%; border-collapse: separate; border-spacing: 0; }
+th { text-align: left; padding: 10px 16px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; border-bottom: 1px solid rgba(71,85,105,0.3); }
+td { padding: 10px 16px; font-size: 0.8125rem; border-bottom: 1px solid rgba(71,85,105,0.15); }
+tr:hover td { background: rgba(99,102,241,0.03); }
+.toast { animation: slideIn 0.3s ease, fadeOut 0.3s ease 2.7s; }
+@keyframes slideIn { from { transform: translateX(100%); opacity:0 } to { transform: translateX(0); opacity:1 } }
+@keyframes fadeOut { to { opacity:0; transform: translateY(-10px) } }
+.fade-in { animation: fadeIn 0.3s ease; }
+@keyframes fadeIn { from { opacity:0; transform: translateY(8px) } to { opacity:1; transform: translateY(0) } }
+.progress-ring { transition: stroke-dashoffset 0.3s ease; }
+</style>
+</head>
+<body>
+<div x-data="gateway()" x-init="init()" x-cloak class="min-h-screen flex">
+
+<!-- Toast Container -->
+<div class="fixed top-4 right-4 z-50 flex flex-col gap-2">
+  <template x-for="(t,i) in toasts" :key="i">
+    <div class="toast glass rounded-lg px-4 py-3 text-sm flex items-center gap-2 max-w-sm"
+         :class="t.type==='error'?'border-red-500/30':'border-green-500/30'">
+      <span x-text="t.type==='error'?'&#10007;':'&#10003;'" :class="t.type==='error'?'text-red-400':'text-green-400'" class="text-lg"></span>
+      <span x-text="t.msg"></span>
+    </div>
+  </template>
+</div>
+
+<!-- Sidebar -->
+<aside class="w-60 flex-shrink-0 border-r border-slate-700/30 bg-surface-500/50 flex flex-col">
+  <div class="px-5 py-5 border-b border-slate-700/30">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold">C</div>
+      <div>
+        <div class="text-sm font-semibold text-white">Claude Gateway</div>
+        <div class="text-xs text-slate-500">Admin Console</div>
+      </div>
+    </div>
+  </div>
+
+  <nav class="flex-1 px-3 py-4 space-y-1">
+    <template x-for="tab in tabs" :key="tab.id">
+      <button @click="switchTab(tab.id)"
+              :class="activeTab===tab.id ? 'bg-indigo-500/10 text-indigo-300 border-l-2 border-indigo-500' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/30 border-l-2 border-transparent'"
+              class="w-full flex items-center gap-3 px-3 py-2.5 rounded-r-lg text-sm font-medium transition-all">
+        <span x-html="tab.icon" class="w-4 h-4"></span>
+        <span x-text="tab.label"></span>
+      </button>
+    </template>
+  </nav>
+
+  <div class="px-4 py-4 border-t border-slate-700/30">
+    <div class="flex items-center gap-2 text-xs text-slate-500">
+      <div class="w-2 h-2 rounded-full" :class="connected?'bg-green-400 animate-pulse':'bg-red-400'"></div>
+      <span x-text="connected?'Connected':'Disconnected'"></span>
+    </div>
+    <div class="mt-2">
+      <input x-model="adminKey" type="password" placeholder="Admin Key"
+             @keydown.enter="connect()"
+             class="input w-full text-xs">
+      <button @click="connect()" class="btn btn-primary w-full mt-2 justify-center text-xs">Connect</button>
+    </div>
+  </div>
+</aside>
+
+<!-- Main Content -->
+<main class="flex-1 overflow-y-auto">
+
+<!-- ===== Dashboard ===== -->
+<div x-show="activeTab==='dashboard'" class="p-6 fade-in">
+  <h2 class="text-lg font-semibold text-white mb-6">Dashboard Overview</h2>
+
+  <!-- Stat Cards -->
+  <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+    <div class="stat-card rounded-xl p-4 transition-all">
+      <div class="text-xs text-slate-500 uppercase tracking-wider mb-1">Active Accounts</div>
+      <div class="text-2xl font-bold text-white" x-text="overview.active_accounts||0"></div>
+      <div class="text-xs text-slate-500 mt-1"><span x-text="overview.total_accounts||0"></span> total</div>
+    </div>
+    <div class="stat-card rounded-xl p-4 transition-all">
+      <div class="text-xs text-slate-500 uppercase tracking-wider mb-1">API Keys</div>
+      <div class="text-2xl font-bold text-white" x-text="overview.total_keys||0"></div>
+      <div class="text-xs text-slate-500 mt-1">enabled</div>
+    </div>
+    <div class="stat-card rounded-xl p-4 transition-all">
+      <div class="text-xs text-slate-500 uppercase tracking-wider mb-1">Today Requests</div>
+      <div class="text-2xl font-bold text-white" x-text="(overview.today_requests||0).toLocaleString()"></div>
+      <div class="text-xs mt-1" :class="(overview.today_errors||0)>0?'text-red-400':'text-green-400'">
+        <span x-text="overview.today_errors||0"></span> errors
+      </div>
+    </div>
+    <div class="stat-card rounded-xl p-4 transition-all">
+      <div class="text-xs text-slate-500 uppercase tracking-wider mb-1">Avg Latency</div>
+      <div class="text-2xl font-bold text-white"><span x-text="overview.avg_latency_ms||0"></span><span class="text-sm text-slate-500 ml-1">ms</span></div>
+      <div class="text-xs text-slate-500 mt-1">today</div>
+    </div>
+  </div>
+
+  <!-- Charts -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+    <div class="glass rounded-xl p-5">
+      <h3 class="text-sm font-semibold text-slate-300 mb-4">Request Volume (30 days)</h3>
+      <div class="h-56"><canvas id="chartDaily"></canvas></div>
+    </div>
+    <div class="glass rounded-xl p-5">
+      <h3 class="text-sm font-semibold text-slate-300 mb-4">Hourly Traffic (48h)</h3>
+      <div class="h-56"><canvas id="chartHourly"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Recent logs + Model breakdown -->
+  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="lg:col-span-2 glass rounded-xl p-5">
+      <h3 class="text-sm font-semibold text-slate-300 mb-4">Recent Requests</h3>
+      <div class="overflow-x-auto max-h-72 overflow-y-auto">
+        <table>
+          <thead class="sticky top-0 bg-surface-300"><tr><th>Time</th><th>Key</th><th>Account</th><th>Model</th><th>Status</th><th>Latency</th></tr></thead>
+          <tbody>
+            <template x-for="l in recentLogs" :key="l.id">
+              <tr>
+                <td class="font-mono text-xs text-slate-400" x-text="l.created_at?.substr(11,8)||'-'"></td>
+                <td class="text-xs" x-text="l.key_name"></td>
+                <td class="text-xs" x-text="l.account"></td>
+                <td class="text-xs font-mono text-slate-400" x-text="shortModel(l.model)"></td>
+                <td><span class="badge" :class="l.status<300?'badge-green':l.status<400?'badge-blue':l.status<500?'badge-yellow':'badge-red'" x-text="l.status"></span></td>
+                <td class="text-xs font-mono" x-text="l.latency_ms+'ms'"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="glass rounded-xl p-5">
+      <h3 class="text-sm font-semibold text-slate-300 mb-4">Models (30 days)</h3>
+      <div class="space-y-3">
+        <template x-for="m in modelStats" :key="m.model">
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <span class="text-slate-300 font-mono" x-text="shortModel(m.model)"></span>
+              <span class="text-slate-500" x-text="m.requests.toLocaleString()"></span>
+            </div>
+            <div class="h-1.5 bg-slate-700/50 rounded-full overflow-hidden">
+              <div class="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all"
+                   :style="'width:'+Math.min(100, m.requests/(modelStats[0]?.requests||1)*100)+'%'"></div>
+            </div>
+          </div>
+        </template>
+        <div x-show="modelStats.length===0" class="text-xs text-slate-500 text-center py-4">No data yet</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Accounts ===== -->
+<div x-show="activeTab==='accounts'" class="p-6 fade-in">
+  <div class="flex items-center justify-between mb-6">
+    <h2 class="text-lg font-semibold text-white">Upstream Accounts</h2>
+    <button @click="showAddAccount=!showAddAccount" class="btn btn-primary btn-sm">+ Add Account</button>
+  </div>
+
+  <!-- Add form -->
+  <div x-show="showAddAccount" x-transition class="glass rounded-xl p-5 mb-6">
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+      <input x-model="newAccount.name" placeholder="Account Name" class="input">
+      <input x-model="newAccount.token" placeholder="Token / API Key" class="input lg:col-span-2">
+      <input x-model="newAccount.fingerprint" placeholder="Fingerprint (optional)" class="input">
+      <input x-model.number="newAccount.rpm" placeholder="RPM (default 60)" type="number" class="input">
+      <input x-model.number="newAccount.max_concur" placeholder="Max Concurrency (default 5)" type="number" class="input">
+    </div>
+    <div class="flex gap-2 mt-3">
+      <button @click="addAccount()" class="btn btn-success">Save Account</button>
+      <button @click="showAddAccount=false" class="btn btn-ghost">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Table -->
+  <div class="glass rounded-xl overflow-hidden">
+    <table>
+      <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Token</th><th>RPM</th><th>Concur</th><th>Proxy</th><th>Requests</th><th>Actions</th></tr></thead>
+      <tbody>
+        <template x-for="a in accounts" :key="a.id">
+          <tr>
+            <td class="font-mono text-xs text-slate-500" x-text="a.id"></td>
+            <td class="font-medium text-white" x-text="a.name"></td>
+            <td><span class="badge" :class="statusBadge(a.status)" x-text="a.status"></span></td>
+            <td class="font-mono text-xs text-slate-500" x-text="a.token"></td>
+            <td class="text-xs" x-text="a.rpm"></td>
+            <td class="text-xs" x-text="a.max_concur"></td>
+            <td class="text-xs text-slate-500" x-text="a.proxy_id||'—'"></td>
+            <td class="font-mono text-xs" x-text="a.total_reqs.toLocaleString()"></td>
+            <td class="flex gap-1">
+              <button @click="toggleAccount(a)" class="btn btn-ghost btn-sm" x-text="a.status==='active'?'Disable':'Enable'"></button>
+              <button @click="confirmDelete('account', a.id, a.name)" class="btn btn-danger btn-sm">Del</button>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+    <div x-show="accounts.length===0" class="text-center py-12 text-slate-500 text-sm">No accounts configured. Add one to get started.</div>
+  </div>
+</div>
+
+<!-- ===== Proxies ===== -->
+<div x-show="activeTab==='proxies'" class="p-6 fade-in">
+  <div class="flex items-center justify-between mb-6">
+    <h2 class="text-lg font-semibold text-white">Proxy Pool</h2>
+    <button @click="showAddProxy=!showAddProxy" class="btn btn-primary btn-sm">+ Add Proxy</button>
+  </div>
+
+  <div x-show="showAddProxy" x-transition class="glass rounded-xl p-5 mb-6">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
+      <input x-model="newProxy.url" placeholder="socks5://user:pass@host:port" class="input md:col-span-2">
+      <select x-model="newProxy.type" class="input">
+        <option value="socks5">SOCKS5</option>
+        <option value="http">HTTP</option>
+      </select>
+    </div>
+    <button @click="addProxy()" class="btn btn-success btn-sm">Add Single</button>
+
+    <div class="mt-4 border-t border-slate-700/30 pt-4">
+      <div class="text-xs text-slate-500 mb-2">Batch Add (one URL per line)</div>
+      <textarea x-model="batchProxies" rows="4" placeholder="socks5://host1:1080&#10;socks5://host2:1080&#10;..." class="input w-full font-mono text-xs"></textarea>
+      <button @click="addProxiesBatch()" class="btn btn-success btn-sm mt-2">Batch Add</button>
+    </div>
+  </div>
+
+  <div class="glass rounded-xl overflow-hidden">
+    <table>
+      <thead><tr><th>ID</th><th>URL</th><th>Type</th><th>Bound Account</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody>
+        <template x-for="p in proxies" :key="p.id">
+          <tr>
+            <td class="font-mono text-xs text-slate-500" x-text="p.id"></td>
+            <td class="font-mono text-xs" x-text="p.url"></td>
+            <td><span class="badge badge-blue" x-text="p.type"></span></td>
+            <td class="text-xs" x-text="p.account_id||'—'"></td>
+            <td><span class="badge" :class="p.status==='bound'?'badge-green':'badge-gray'" x-text="p.status"></span></td>
+            <td><button @click="confirmDelete('proxy', p.id, p.url)" class="btn btn-danger btn-sm">Del</button></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+    <div x-show="proxies.length===0" class="text-center py-12 text-slate-500 text-sm">No proxies. Accounts will connect directly.</div>
+  </div>
+</div>
+
+<!-- ===== API Keys ===== -->
+<div x-show="activeTab==='keys'" class="p-6 fade-in">
+  <div class="flex items-center justify-between mb-6">
+    <h2 class="text-lg font-semibold text-white">Employee API Keys</h2>
+    <button @click="showAddKey=!showAddKey" class="btn btn-primary btn-sm">+ Generate Key</button>
+  </div>
+
+  <div x-show="showAddKey" x-transition class="glass rounded-xl p-5 mb-6">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <input x-model="newKey.name" placeholder="Key Name (e.g. team-backend)" class="input">
+      <input x-model.number="newKey.daily_limit" placeholder="Daily Limit (default 1000)" type="number" class="input">
+    </div>
+    <button @click="addKey()" class="btn btn-success mt-3">Generate</button>
+  </div>
+
+  <div x-show="generatedKey" x-transition class="glass glow-border rounded-xl p-4 mb-6">
+    <div class="flex items-center justify-between">
+      <div>
+        <div class="text-xs text-slate-500 mb-1">New API Key Generated (copy now, shown once)</div>
+        <code class="text-green-400 font-mono text-sm" x-text="generatedKey"></code>
+      </div>
+      <button @click="copyKey()" class="btn btn-ghost btn-sm">Copy</button>
+    </div>
+  </div>
+
+  <div class="glass rounded-xl overflow-hidden">
+    <table>
+      <thead><tr><th>ID</th><th>Name</th><th>Key</th><th>Daily Limit</th><th>Enabled</th><th>Requests</th><th>Actions</th></tr></thead>
+      <tbody>
+        <template x-for="k in keys" :key="k.id">
+          <tr>
+            <td class="font-mono text-xs text-slate-500" x-text="k.id"></td>
+            <td class="font-medium text-white" x-text="k.name||'(unnamed)'"></td>
+            <td class="font-mono text-xs text-slate-400" x-text="k.key"></td>
+            <td class="text-xs" x-text="k.daily_limit.toLocaleString()"></td>
+            <td><span class="badge" :class="k.enabled?'badge-green':'badge-red'" x-text="k.enabled?'Yes':'No'"></span></td>
+            <td class="font-mono text-xs" x-text="k.total_reqs.toLocaleString()"></td>
+            <td class="flex gap-1">
+              <button @click="toggleKey(k)" class="btn btn-ghost btn-sm" x-text="k.enabled?'Disable':'Enable'"></button>
+              <button @click="confirmDelete('key', k.id, k.name||k.key)" class="btn btn-danger btn-sm">Del</button>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+    <div x-show="keys.length===0" class="text-center py-12 text-slate-500 text-sm">No API keys. Generate one for your team.</div>
+  </div>
+
+  <!-- Key usage stats -->
+  <div x-show="keyStatsData.length>0" class="glass rounded-xl p-5 mt-6">
+    <h3 class="text-sm font-semibold text-slate-300 mb-4">Key Usage (30 days)</h3>
+    <table>
+      <thead><tr><th>Key Name</th><th>Requests</th><th>Avg Latency</th></tr></thead>
+      <tbody>
+        <template x-for="s in keyStatsData" :key="s.key_id">
+          <tr>
+            <td class="text-sm" x-text="s.key_name"></td>
+            <td class="font-mono text-xs" x-text="s.requests.toLocaleString()"></td>
+            <td class="font-mono text-xs" x-text="s.avg_latency_ms+'ms'"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ===== Live Pool ===== -->
+<div x-show="activeTab==='pool'" class="p-6 fade-in">
+  <div class="flex items-center justify-between mb-6">
+    <h2 class="text-lg font-semibold text-white">Live Pool Status</h2>
+    <div class="flex items-center gap-3">
+      <span class="text-xs text-slate-500">Auto-refresh 5s</span>
+      <button @click="api('POST','/ops/reload')" class="btn btn-ghost btn-sm">Force Reload</button>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+    <template x-for="s in poolStates" :key="s.id">
+      <div class="glass rounded-xl p-5 transition-all hover:border-indigo-500/30">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <div class="font-semibold text-white text-sm" x-text="s.name"></div>
+            <div class="text-xs text-slate-500 font-mono" x-text="'ID: '+s.id"></div>
+          </div>
+          <span class="badge" :class="statusBadge(s.status)" x-text="s.status"></span>
+        </div>
+
+        <!-- Concurrency bar -->
+        <div class="mb-3">
+          <div class="flex justify-between text-xs mb-1">
+            <span class="text-slate-400">Concurrency</span>
+            <span class="font-mono" :class="s.in_flight>=s.max_concur?'text-red-400':'text-slate-300'" x-text="s.in_flight+'/'+s.max_concur"></span>
+          </div>
+          <div class="h-2 bg-slate-700/50 rounded-full overflow-hidden">
+            <div class="h-full rounded-full transition-all duration-500"
+                 :class="s.in_flight/s.max_concur>0.8?'bg-red-500':s.in_flight/s.max_concur>0.5?'bg-yellow-500':'bg-green-500'"
+                 :style="'width:'+Math.min(100, s.in_flight/s.max_concur*100)+'%'"></div>
+          </div>
+        </div>
+
+        <!-- RPM bar -->
+        <div class="mb-3">
+          <div class="flex justify-between text-xs mb-1">
+            <span class="text-slate-400">RPM</span>
+            <span class="font-mono text-slate-300" x-text="s.rpm_count+'/'+s.rpm_limit"></span>
+          </div>
+          <div class="h-2 bg-slate-700/50 rounded-full overflow-hidden">
+            <div class="h-full bg-indigo-500 rounded-full transition-all duration-500"
+                 :style="'width:'+Math.min(100, s.rpm_count/s.rpm_limit*100)+'%'"></div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 text-xs">
+          <div class="text-slate-500">Proxy</div>
+          <div class="font-mono text-slate-300 truncate" x-text="s.proxy_url||'direct'" :title="s.proxy_url"></div>
+          <div class="text-slate-500">Cooldown</div>
+          <div class="font-mono" :class="s.cool_remaining_s>0?'text-yellow-400':'text-slate-500'" x-text="s.cool_remaining_s>0?s.cool_remaining_s+'s':'—'"></div>
+          <div class="text-slate-500">Total Reqs</div>
+          <div class="font-mono text-slate-300" x-text="(s.total_reqs||0).toLocaleString()"></div>
+        </div>
+      </div>
+    </template>
+  </div>
+  <div x-show="poolStates.length===0" class="glass rounded-xl text-center py-16 text-slate-500 text-sm">No accounts in pool. Add accounts to see live status.</div>
+</div>
+
+</main>
+
+<!-- Delete Confirmation Modal -->
+<div x-show="deleteModal.show" x-transition.opacity class="fixed inset-0 z-40 bg-black/60 flex items-center justify-center" @click.self="deleteModal.show=false">
+  <div class="glass rounded-xl p-6 w-96" x-transition>
+    <h3 class="text-white font-semibold mb-2">Confirm Delete</h3>
+    <p class="text-sm text-slate-400 mb-4">Delete <span class="text-white font-medium" x-text="deleteModal.name"></span>? This cannot be undone.</p>
+    <div class="flex justify-end gap-2">
+      <button @click="deleteModal.show=false" class="btn btn-ghost">Cancel</button>
+      <button @click="executeDelete()" class="btn btn-danger">Delete</button>
+    </div>
+  </div>
+</div>
+
+</div>
+
+<script>
+function gateway() {
+  return {
+    adminKey: '',
+    connected: false,
+    activeTab: 'dashboard',
+    toasts: [],
+    tabs: [
+      { id:'dashboard', label:'Dashboard', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>' },
+      { id:'accounts', label:'Accounts', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>' },
+      { id:'proxies', label:'Proxies', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>' },
+      { id:'keys', label:'API Keys', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>' },
+      { id:'pool', label:'Live Pool', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>' },
+    ],
+
+    // Data
+    overview: {},
+    accounts: [],
+    proxies: [],
+    keys: [],
+    poolStates: [],
+    recentLogs: [],
+    modelStats: [],
+    keyStatsData: [],
+    dailyData: [],
+    hourlyData: [],
+
+    // UI state
+    showAddAccount: false,
+    showAddProxy: false,
+    showAddKey: false,
+    generatedKey: '',
+    deleteModal: { show:false, type:'', id:0, name:'' },
+    newAccount: { name:'', token:'', fingerprint:'', rpm:60, max_concur:5 },
+    newProxy: { url:'', type:'socks5' },
+    newKey: { name:'', daily_limit:1000 },
+    batchProxies: '',
+
+    // Charts
+    chartDaily: null,
+    chartHourly: null,
+    pollTimer: null,
+
+    init() {
+      this.adminKey = localStorage.getItem('gw_admin_key') || '';
+      if (this.adminKey) this.connect();
+    },
+
+    headers() {
+      return { 'Content-Type':'application/json', 'Authorization':'Bearer '+this.adminKey };
+    },
+
+    async api(method, path, body) {
+      const opts = { method, headers: this.headers() };
+      if (body) opts.body = JSON.stringify(body);
+      const res = await fetch('/admin'+path, opts);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || data.error || 'Request failed');
+      return data;
+    },
+
+    async connect() {
+      localStorage.setItem('gw_admin_key', this.adminKey);
+      try {
+        await this.loadAll();
+        this.connected = true;
+        this.toast('Connected successfully', 'success');
+        this.startPolling();
+      } catch(e) {
+        this.connected = false;
+        this.toast('Connection failed: '+e.message, 'error');
+      }
+    },
+
+    startPolling() {
+      if (this.pollTimer) clearInterval(this.pollTimer);
+      this.pollTimer = setInterval(() => {
+        if (this.activeTab === 'pool') this.loadPoolStatus();
+        if (this.activeTab === 'dashboard') this.loadDashboard();
+      }, 5000);
+    },
+
+    switchTab(id) {
+      this.activeTab = id;
+      if (id === 'dashboard') this.loadDashboard();
+      if (id === 'accounts') this.loadAccounts();
+      if (id === 'proxies') this.loadProxies();
+      if (id === 'keys') { this.loadKeys(); this.loadKeyStats(); }
+      if (id === 'pool') this.loadPoolStatus();
+    },
+
+    async loadAll() {
+      await Promise.all([
+        this.loadDashboard(),
+        this.loadAccounts(),
+        this.loadProxies(),
+        this.loadKeys(),
+        this.loadPoolStatus(),
+        this.loadKeyStats(),
+      ]);
+    },
+
+    async loadDashboard() {
+      try {
+        const [ov, daily, hourly, logs, models] = await Promise.all([
+          this.api('GET','/overview'),
+          this.api('GET','/stats/daily?days=30'),
+          this.api('GET','/stats/hourly?hours=48'),
+          this.api('GET','/stats/logs?limit=20'),
+          this.api('GET','/stats/models?days=30'),
+        ]);
+        this.overview = ov;
+        this.dailyData = daily;
+        this.hourlyData = hourly;
+        this.recentLogs = logs;
+        this.modelStats = models;
+        this.$nextTick(() => this.renderCharts());
+      } catch(e) {}
+    },
+
+    async loadAccounts() { try { this.accounts = await this.api('GET','/accounts'); } catch(e){} },
+    async loadProxies() { try { this.proxies = await this.api('GET','/proxies'); } catch(e){} },
+    async loadKeys() { try { this.keys = await this.api('GET','/keys'); } catch(e){} },
+    async loadPoolStatus() { try { this.poolStates = await this.api('GET','/stats/pool'); } catch(e){} },
+    async loadKeyStats() { try { this.keyStatsData = await this.api('GET','/stats/keys?days=30'); } catch(e){} },
+
+    renderCharts() {
+      const gridColor = 'rgba(71,85,105,0.2)';
+      const tickColor = '#64748b';
+
+      // Daily chart
+      const dailyCtx = document.getElementById('chartDaily');
+      if (dailyCtx) {
+        if (this.chartDaily) this.chartDaily.destroy();
+        this.chartDaily = new Chart(dailyCtx, {
+          type: 'line',
+          data: {
+            labels: this.dailyData.map(d => d.date?.substr(5)||''),
+            datasets: [{
+              label: 'Requests',
+              data: this.dailyData.map(d => d.requests),
+              borderColor: '#6366f1',
+              backgroundColor: 'rgba(99,102,241,0.08)',
+              fill: true, tension: 0.4, pointRadius: 0, borderWidth: 2,
+            },{
+              label: 'Errors',
+              data: this.dailyData.map(d => d.error_count),
+              borderColor: '#ef4444',
+              backgroundColor: 'rgba(239,68,68,0.05)',
+              fill: true, tension: 0.4, pointRadius: 0, borderWidth: 1.5,
+            }]
+          },
+          options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ labels:{ color:tickColor, boxWidth:12, font:{size:11}} } },
+            scales:{ x:{ ticks:{color:tickColor,font:{size:10}}, grid:{color:gridColor} }, y:{ beginAtZero:true, ticks:{color:tickColor,font:{size:10}}, grid:{color:gridColor}} } }
+        });
+      }
+
+      // Hourly chart
+      const hourlyCtx = document.getElementById('chartHourly');
+      if (hourlyCtx) {
+        if (this.chartHourly) this.chartHourly.destroy();
+        this.chartHourly = new Chart(hourlyCtx, {
+          type: 'bar',
+          data: {
+            labels: this.hourlyData.map(d => d.hour?.substr(11,5)||''),
+            datasets: [{
+              label: 'Requests',
+              data: this.hourlyData.map(d => d.requests),
+              backgroundColor: 'rgba(99,102,241,0.4)',
+              borderColor: '#6366f1', borderWidth: 1, borderRadius: 3,
+            }]
+          },
+          options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false} },
+            scales:{ x:{ ticks:{color:tickColor,font:{size:9},maxRotation:0,autoSkip:true,maxTicksLimit:12}, grid:{display:false} }, y:{ beginAtZero:true, ticks:{color:tickColor,font:{size:10}}, grid:{color:gridColor}} } }
+        });
+      }
+    },
+
+    // CRUD operations
+    async addAccount() {
+      try {
+        await this.api('POST','/accounts', this.newAccount);
+        this.newAccount = { name:'', token:'', fingerprint:'', rpm:60, max_concur:5 };
+        this.showAddAccount = false;
+        await this.loadAccounts();
+        this.toast('Account added', 'success');
+      } catch(e) { this.toast(e.message,'error'); }
+    },
+
+    async toggleAccount(a) {
+      const s = a.status==='active' ? 'disabled' : 'active';
+      try {
+        await this.api('PUT','/accounts/'+a.id+'/status', {status:s});
+        await this.loadAccounts();
+      } catch(e) { this.toast(e.message,'error'); }
+    },
+
+    async addProxy() {
+      try {
+        await this.api('POST','/proxies', this.newProxy);
+        this.newProxy = {url:'',type:'socks5'};
+        await this.loadProxies();
+        this.toast('Proxy added','success');
+      } catch(e) { this.toast(e.message,'error'); }
+    },
+
+    async addProxiesBatch() {
+      try {
+        const res = await this.api('POST','/proxies/batch', {urls:this.batchProxies, type:'socks5'});
+        this.batchProxies = '';
+        await this.loadProxies();
+        this.toast(res.created+' proxies added','success');
+      } catch(e) { this.toast(e.message,'error'); }
+    },
+
+    async addKey() {
+      try {
+        const res = await this.api('POST','/keys', this.newKey);
+        this.generatedKey = res.key;
+        this.newKey = {name:'',daily_limit:1000};
+        this.showAddKey = false;
+        await this.loadKeys();
+        this.toast('Key generated','success');
+      } catch(e) { this.toast(e.message,'error'); }
+    },
+
+    async toggleKey(k) {
+      try {
+        await this.api('PUT','/keys/'+k.id, {enabled: k.enabled?0:1});
+        await this.loadKeys();
+      } catch(e) { this.toast(e.message,'error'); }
+    },
+
+    copyKey() {
+      navigator.clipboard.writeText(this.generatedKey);
+      this.toast('Copied to clipboard','success');
+    },
+
+    confirmDelete(type, id, name) {
+      this.deleteModal = { show:true, type, id, name };
+    },
+
+    async executeDelete() {
+      const {type,id} = this.deleteModal;
+      try {
+        const path = type==='account'?'/accounts/':type==='proxy'?'/proxies/':'/keys/';
+        await this.api('DELETE', path+id);
+        this.deleteModal.show = false;
+        if (type==='account') await this.loadAccounts();
+        if (type==='proxy') await this.loadProxies();
+        if (type==='key') await this.loadKeys();
+        this.toast('Deleted successfully','success');
+      } catch(e) { this.toast(e.message,'error'); }
+    },
+
+    // Helpers
+    statusBadge(s) {
+      return { active:'badge-green', disabled:'badge-red', refreshing:'badge-yellow', cooldown:'badge-yellow' }[s] || 'badge-gray';
+    },
+    shortModel(m) { return (m||'unknown').replace('claude-','').replace('-20250514','').replace('-20241022',''); },
+    toast(msg, type='info') {
+      this.toasts.push({msg,type});
+      setTimeout(() => this.toasts.shift(), 3000);
+    },
+  };
+}
+</script>
+</body>
+</html>

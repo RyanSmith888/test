@@ -1,0 +1,13 @@
+gateway
+gateway.db
+gateway.db-wal
+gateway.db-shm
+.env
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+.DS_Store
+go.sum

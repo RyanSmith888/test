@@ -1,0 +1,33 @@
+services:
+  gateway:
+    build: .
+    container_name: claude-gateway
+    ports:
+      - "${PORT:-8080}:8080"
+    environment:
+      - PORT=8080
+      - DB_PATH=/data/gateway.db
+      - ADMIN_KEY=${ADMIN_KEY:-}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - UPSTREAM_URL=${UPSTREAM_URL:-https://api.anthropic.com}
+      - DEFAULT_RPM=${DEFAULT_RPM:-60}
+      - DEFAULT_MAX_CONCUR=${DEFAULT_MAX_CONCUR:-5}
+      - MAX_RETRY_ATTEMPTS=${MAX_RETRY_ATTEMPTS:-3}
+    volumes:
+      - gateway_data:/data
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "2"
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  gateway_data:
+    driver: local
