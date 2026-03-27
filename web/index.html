@@ -129,15 +129,11 @@ tr:hover td { background: #fafbfc; }
   </nav>
 
   <div class="px-4 py-4 border-t border-gray-100">
-    <div class="flex items-center gap-2 text-xs text-gray-400 mb-3">
+    <div class="flex items-center gap-2 text-xs text-gray-400 mb-2">
       <div class="w-2 h-2 rounded-full" :class="connected?'bg-green-400':'bg-red-400'"></div>
       <span x-text="connected?'已连接':'未连接'"></span>
     </div>
-    <input x-model="adminKey" type="password" placeholder="Admin Key (后端密钥)"
-           @keydown.enter="connect()"
-           class="input w-full text-xs mb-2">
-    <button @click="connect()" class="btn btn-primary w-full justify-center text-xs">连接后端</button>
-    <button @click="doLogout()" class="btn btn-ghost w-full justify-center text-xs mt-2">退出登录</button>
+    <button @click="doLogout()" class="btn btn-ghost w-full justify-center text-xs">退出登录</button>
   </div>
 </aside>
 
@@ -525,29 +521,25 @@ tr:hover td { background: #fafbfc; }
 <div x-show="activeTab==='settings'" class="p-6 fade-in">
   <div class="mb-6">
     <h2 class="text-xl font-bold text-gray-900">系统设置</h2>
-    <p class="text-sm text-gray-400 mt-0.5">管理后台密码修改</p>
+    <p class="text-sm text-gray-400 mt-0.5">系统信息与配置</p>
   </div>
 
   <div class="card p-6 max-w-lg">
-    <h3 class="text-sm font-semibold text-gray-700 mb-4">修改管理员密码</h3>
-    <div x-show="pwMsg" class="rounded-lg px-3 py-2 mb-4 text-sm"
-         :class="pwMsgType==='success'?'bg-green-50 border border-green-200 text-green-700':'bg-red-50 border border-red-200 text-red-600'"
-         x-text="pwMsg"></div>
-    <div class="space-y-3">
-      <div>
-        <label class="block text-xs font-medium text-gray-500 mb-1">当前密码</label>
-        <input x-model="pwForm.old" type="password" placeholder="请输入当前密码" class="input w-full">
-      </div>
-      <div>
-        <label class="block text-xs font-medium text-gray-500 mb-1">新密码</label>
-        <input x-model="pwForm.new1" type="password" placeholder="请输入新密码（至少 6 位）" class="input w-full">
-      </div>
-      <div>
-        <label class="block text-xs font-medium text-gray-500 mb-1">确认新密码</label>
-        <input x-model="pwForm.new2" type="password" placeholder="再次输入新密码" class="input w-full"
-               @keydown.enter="changePassword()">
-      </div>
-      <button @click="changePassword()" class="btn btn-primary">保存密码</button>
+    <h3 class="text-sm font-semibold text-gray-700 mb-4">管理员密码</h3>
+    <div class="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-700">
+      <p class="font-medium mb-1">登录密码 = 后端 ADMIN_KEY 环境变量</p>
+      <p class="text-blue-600 text-xs">默认密码：<code class="font-mono bg-blue-100 px-1 rounded">admin281100</code></p>
+      <p class="text-blue-600 text-xs mt-1">修改方法：重启服务时设置环境变量 <code class="font-mono bg-blue-100 px-1 rounded">ADMIN_KEY=新密码</code></p>
+    </div>
+  </div>
+
+  <div class="card p-6 max-w-lg mt-4">
+    <h3 class="text-sm font-semibold text-gray-700 mb-4">日志清理</h3>
+    <p class="text-xs text-gray-400 mb-3">清除指定天数之前的请求日志</p>
+    <div class="flex gap-2 items-center">
+      <input x-model.number="purgeDays" type="number" placeholder="90" class="input w-24 text-sm" value="90">
+      <span class="text-xs text-gray-400">天前的日志</span>
+      <button @click="purgeOldLogs()" class="btn btn-danger btn-sm">清理</button>
     </div>
   </div>
 </div>
@@ -570,8 +562,6 @@ tr:hover td { background: #fafbfc; }
 </div><!-- end x-data -->
 
 <script>
-const DEFAULT_PASSWORD = 'admin281100';
-const STORAGE_KEY_PW = 'gw_admin_password';
 const STORAGE_KEY_LOGGED = 'gw_logged_in';
 
 function gateway() {
@@ -621,10 +611,8 @@ function gateway() {
     verifyResult: null,
     verifyTokenType: '',
 
-    // Password change
-    pwForm: { old:'', new1:'', new2:'' },
-    pwMsg: '',
-    pwMsgType: '',
+    // Settings
+    purgeDays: 90,
 
     chartDaily: null,
     chartHourly: null,
@@ -646,55 +634,55 @@ function gateway() {
       });
     },
 
-    // ---- Password helpers ----
-    getSavedPassword() {
-      return localStorage.getItem(STORAGE_KEY_PW) || DEFAULT_PASSWORD;
-    },
-
-    doLogin() {
+    // ---- Login: password = admin key ----
+    async doLogin() {
       this.loginError = '';
       if (!this.loginPassword) {
         this.loginError = '请输入密码';
         return;
       }
-      if (this.loginPassword !== this.getSavedPassword()) {
-        this.loginError = '密码错误，请重试';
+      // Try to connect to backend with this password as admin key
+      this.adminKey = this.loginPassword;
+      try {
+        const res = await fetch('/admin/overview', {
+          headers: { 'Content-Type':'application/json', 'Authorization':'Bearer '+this.adminKey }
+        });
+        if (!res.ok) {
+          this.loginError = '密码错误或后端连接失败';
+          this.adminKey = '';
+          this.loginPassword = '';
+          return;
+        }
+        // Success
+        this.loggedIn = true;
+        this.connected = true;
+        localStorage.setItem('gw_admin_key', this.adminKey);
+        sessionStorage.setItem(STORAGE_KEY_LOGGED, '1');
         this.loginPassword = '';
-        return;
+        await this.loadAll();
+        this.startPolling();
+      } catch(e) {
+        this.loginError = '无法连接后端: ' + e.message;
+        this.adminKey = '';
       }
-      this.loggedIn = true;
-      sessionStorage.setItem(STORAGE_KEY_LOGGED, '1');
-      this.loginPassword = '';
-      // auto-connect if admin key exists
-      this.adminKey = localStorage.getItem('gw_admin_key') || '';
-      if (this.adminKey) this.connect();
     },
 
     doLogout() {
       this.loggedIn = false;
       this.connected = false;
+      this.adminKey = '';
+      localStorage.removeItem('gw_admin_key');
       sessionStorage.removeItem(STORAGE_KEY_LOGGED);
       if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
     },
 
-    changePassword() {
-      this.pwMsg = '';
-      if (!this.pwForm.old) { this.pwMsg = '请输入当前密码'; this.pwMsgType = 'error'; return; }
-      if (this.pwForm.old !== this.getSavedPassword()) { this.pwMsg = '当前密码错误'; this.pwMsgType = 'error'; return; }
-      if (!this.pwForm.new1 || this.pwForm.new1.length < 6) { this.pwMsg = '新密码长度不能少于 6 位'; this.pwMsgType = 'error'; return; }
-      if (this.pwForm.new1 !== this.pwForm.new2) { this.pwMsg = '两次输入的新密码不一致'; this.pwMsgType = 'error'; return; }
-      localStorage.setItem(STORAGE_KEY_PW, this.pwForm.new1);
-      this.pwForm = { old:'', new1:'', new2:'' };
-      this.pwMsg = '密码修改成功';
-      this.pwMsgType = 'success';
-    },
-
     init() {
-      // Check session
-      if (sessionStorage.getItem(STORAGE_KEY_LOGGED) === '1') {
+      // Restore session
+      const savedKey = localStorage.getItem('gw_admin_key');
+      if (savedKey && sessionStorage.getItem(STORAGE_KEY_LOGGED) === '1') {
+        this.adminKey = savedKey;
         this.loggedIn = true;
-        this.adminKey = localStorage.getItem('gw_admin_key') || '';
-        if (this.adminKey) this.connect();
+        this.connect();
       }
     },
 
@@ -899,6 +887,13 @@ function gateway() {
     copyKey() {
       navigator.clipboard.writeText(this.generatedKey);
       this.toast('已复制到剪贴板','success');
+    },
+
+    async purgeOldLogs() {
+      try {
+        const res = await this.api('POST','/ops/purge-logs', { days: this.purgeDays || 90 });
+        this.toast('已清理 '+res.deleted+' 条日志','success');
+      } catch(e) { this.toast(e.message,'error'); }
     },
 
     confirmDelete(type, id, name) {

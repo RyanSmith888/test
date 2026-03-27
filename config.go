@@ -93,7 +93,7 @@ func LoadConfig() (*Config, error) {
 
 		DBPath: getEnv("DB_PATH", "gateway.db"),
 
-		AdminKey: getEnv("ADMIN_KEY", ""),
+		AdminKey: getEnv("ADMIN_KEY", "admin281100"),
 
 		LogLevel: parseLogLevel(getEnv("LOG_LEVEL", "info")),
 
@@ -122,18 +122,9 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("invalid PORT %d: must be 1-65535", cfg.Port)
 	}
 
-	// Auto-generate admin key if not set
-	if cfg.AdminKey == "" {
-		cfg.AdminKey = generateRandomKey(32)
-		fmt.Println()
-		fmt.Println("\033[1;33m╔══════════════════════════════════════════════════════════════════╗")
-		fmt.Println("║                    AUTO-GENERATED ADMIN KEY                     ║")
-		fmt.Println("╠══════════════════════════════════════════════════════════════════╣")
-		fmt.Printf("║  %s  ║\n", cfg.AdminKey)
-		fmt.Println("╠══════════════════════════════════════════════════════════════════╣")
-		fmt.Println("║  Set ADMIN_KEY env var to use your own persistent key.          ║")
-		fmt.Println("╚══════════════════════════════════════════════════════════════════╝\033[0m")
-		fmt.Println()
+	// Show admin key info
+	if cfg.AdminKey == "admin281100" {
+		fmt.Println("\033[1;33m  [!] Using default admin key. Set ADMIN_KEY env var for production.\033[0m")
 	}
 
 	return cfg, nil
