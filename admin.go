@@ -3,6 +3,7 @@ package main
 import (
 	"embed"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/fs"
 	"net/http"
@@ -38,6 +39,7 @@ func (ah *AdminHandler) RegisterRoutes(mux *http.ServeMux, adminKey string) {
 	admin.HandleFunc("PUT /accounts/{id}/token", ah.updateAccountToken)
 	admin.HandleFunc("DELETE /accounts/{id}", ah.deleteAccount)
 	admin.HandleFunc("POST /accounts/verify", ah.verifyToken)
+	admin.HandleFunc("GET /accounts/{id}/usage", ah.getAccountUsage)
 
 	// API Keys
 	admin.HandleFunc("GET /keys", ah.listKeys)
@@ -149,6 +151,9 @@ func (ah *AdminHandler) updateAccount(w http.ResponseWriter, r *http.Request) {
 		RefreshToken *string `json:"refresh_token"`
 		RPM          *int    `json:"rpm"`
 		MaxConcur    *int    `json:"max_concur"`
+		PlanType     *string `json:"plan_type"`
+		PlanDisplay  *string `json:"plan_display"`
+		Email        *string `json:"email"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, 400, "invalid json")
@@ -182,9 +187,16 @@ func (ah *AdminHandler) updateAccount(w http.ResponseWriter, r *http.Request) {
 		writeError(w, 500, err.Error())
 		return
 	}
-	// Update refresh_token if provided
 	if req.RefreshToken != nil {
 		ah.store.UpdateAccountRefreshToken(id, *req.RefreshToken)
+	}
+	// Update plan info if provided
+	if req.PlanType != nil || req.PlanDisplay != nil || req.Email != nil {
+		pt, pd, em := acct.PlanType, acct.PlanDisplay, acct.Email
+		if req.PlanType != nil { pt = *req.PlanType }
+		if req.PlanDisplay != nil { pd = *req.PlanDisplay }
+		if req.Email != nil { em = *req.Email }
+		ah.store.UpdateAccountPlan(id, pt, pd, em)
 	}
 	ah.pool.Reload()
 	writeJSON(w, 200, map[string]string{"status": "updated"})
@@ -245,63 +257,141 @@ func (ah *AdminHandler) verifyToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 根据 token 类型选择验证端点
-	var verifyURL string
-	var headers map[string]string
-
-	if isOAuthToken(body.Token) {
-		verifyURL = oauthUpstreamURL + "/v1/messages"
-		headers = map[string]string{
-			"Authorization":     "Bearer " + body.Token,
-			"Content-Type":      "application/json",
-			"anthropic-version": "2023-06-01",
-			"anthropic-beta":    "claude-code-20250219,oauth-2025-04-20",
-		}
-	} else {
-		verifyURL = ah.cfg.UpstreamURL + "/v1/messages"
-		headers = map[string]string{
-			"x-api-key":         body.Token,
-			"Authorization":     "Bearer " + body.Token,
-			"Content-Type":      "application/json",
-			"anthropic-version": "2023-06-01",
-		}
-	}
-
-	testBody := `{"model":"claude-haiku-4-5-20251001","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}`
-	req, _ := http.NewRequest("POST", verifyURL, strings.NewReader(testBody))
-	for k, v := range headers {
-		req.Header.Set(k, v)
-	}
-
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		writeJSON(w, 200, map[string]any{"valid": false, "error": "连接失败: " + err.Error()})
+	if !isOAuthToken(body.Token) {
+		// API Key — 简单验证
+		writeJSON(w, 200, map[string]any{
+			"valid":        true,
+			"account_type": "apikey",
+			"plan_display": "API Key",
+			"token_type":   "API Key (api03)",
+		})
 		return
 	}
-	defer resp.Body.Close()
-	rawBody, _ := io.ReadAll(resp.Body)
 
-	valid := resp.StatusCode == 200 || resp.StatusCode == 400 || resp.StatusCode == 529
+	info, err := fetchClaudeAccountInfo(body.Token)
+	if err != nil {
+		writeJSON(w, 200, map[string]any{"valid": false, "error": err.Error()})
+		return
+	}
+	writeJSON(w, 200, info)
+}
 
-	tokenType := "API Key (api03)"
-	if strings.HasPrefix(body.Token, "sk-ant-sid02-") {
-		tokenType = "Session Token (sid02)"
-	} else if strings.HasPrefix(body.Token, "sk-ant-oat01-") {
-		tokenType = "OAuth Token (oat01)"
+func (ah *AdminHandler) getAccountUsage(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	account, err := ah.store.GetAccount(id)
+	if err != nil || account == nil {
+		writeJSON(w, 404, map[string]any{"error": "not found"})
+		return
+	}
+	if !isOAuthToken(account.Token) {
+		writeJSON(w, 200, map[string]any{"supported": false})
+		return
+	}
+	info, err := fetchClaudeAccountInfo(account.Token)
+	if err != nil {
+		writeJSON(w, 200, map[string]any{"supported": true, "error": err.Error()})
+		return
+	}
+	info["supported"] = true
+	writeJSON(w, 200, info)
+}
+
+func fetchClaudeAccountInfo(token string) (map[string]any, error) {
+	client := &http.Client{Timeout: 15 * time.Second}
+
+	// 1. 查用量
+	usageReq, _ := http.NewRequest("GET", "https://api.anthropic.com/api/oauth/usage", nil)
+	usageReq.Header.Set("Authorization", "Bearer "+token)
+	usageReq.Header.Set("anthropic-beta", "oauth-2025-04-20")
+	usageReq.Header.Set("User-Agent", "claude-code/2.0 (external, cli)")
+
+	usageResp, err := client.Do(usageReq)
+	if err != nil {
+		return nil, fmt.Errorf("用量查询失败: %v", err)
+	}
+	defer usageResp.Body.Close()
+	usageBody, _ := io.ReadAll(usageResp.Body)
+
+	if usageResp.StatusCode == 401 || usageResp.StatusCode == 403 {
+		return nil, fmt.Errorf("token 无效或已过期 (HTTP %d)", usageResp.StatusCode)
 	}
 
-	accountType := detectAccountType(body.Token)
+	var usage map[string]any
+	json.Unmarshal(usageBody, &usage)
+
+	// 2. 查账号信息
+	profileReq, _ := http.NewRequest("GET", "https://api.claude.ai/api/auth/profile", nil)
+	profileReq.Header.Set("Authorization", "Bearer "+token)
+	profileReq.Header.Set("anthropic-beta", "oauth-2025-04-20,claude-code-20250219")
+
+	profileResp, err := client.Do(profileReq)
+	var profile map[string]any
+	if err == nil && profileResp.StatusCode == 200 {
+		defer profileResp.Body.Close()
+		profileBody, _ := io.ReadAll(profileResp.Body)
+		json.Unmarshal(profileBody, &profile)
+	}
+
+	// 3. 解析订阅类型
+	planType := "unknown"
+	hasClaudeCode := false
+	if profile != nil {
+		if account, ok := profile["account"].(map[string]any); ok {
+			if plan, ok := account["plan_type"].(string); ok {
+				planType = plan
+			}
+		}
+		if planType == "claude_pro" || planType == "claude_max_5x" ||
+			planType == "claude_max_20x" || planType == "claude_team" ||
+			planType == "claude_enterprise" || strings.Contains(planType, "max") ||
+			strings.Contains(planType, "pro") || strings.Contains(planType, "team") {
+			hasClaudeCode = true
+		}
+	}
+	if usageResp.StatusCode == 200 {
+		hasClaudeCode = true
+	}
+
+	planDisplay := map[string]string{
+		"claude_pro":        "Pro (5x)",
+		"claude_max_5x":     "Max (5x)",
+		"claude_max_20x":    "Max (20x)",
+		"claude_team":       "Team",
+		"claude_enterprise": "Enterprise",
+	}
+	displayName := planDisplay[planType]
+	if displayName == "" {
+		displayName = planType
+	}
+
 	result := map[string]any{
-		"valid":        valid,
-		"status_code":  resp.StatusCode,
-		"token_type":   tokenType,
-		"account_type": accountType,
+		"valid":           usageResp.StatusCode == 200,
+		"has_claude_code": hasClaudeCode,
+		"account_type":    "oauth",
+		"plan_type":       planType,
+		"plan_display":    displayName,
 	}
-	if !valid {
-		result["error"] = "HTTP " + strconv.Itoa(resp.StatusCode) + ": " + string(rawBody)
+
+	if fiveHour, ok := usage["five_hour"].(map[string]any); ok {
+		result["five_hour_utilization"] = fiveHour["utilization"]
+		result["five_hour_resets_at"] = fiveHour["resets_at"]
 	}
-	writeJSON(w, 200, result)
+	if sevenDay, ok := usage["seven_day"].(map[string]any); ok {
+		result["seven_day_utilization"] = sevenDay["utilization"]
+		result["seven_day_resets_at"] = sevenDay["resets_at"]
+	}
+
+	if profile != nil {
+		if email, ok := profile["email"].(string); ok {
+			result["email"] = email
+		}
+	}
+
+	if !hasClaudeCode {
+		result["error"] = "该账号没有 Claude Code 资格（需要 Pro 或 Max 订阅）"
+	}
+
+	return result, nil
 }
 
 // ============================================================================

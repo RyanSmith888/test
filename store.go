@@ -27,6 +27,9 @@ type Account struct {
 	Fingerprint  string `json:"fingerprint"`              // optional identifier
 	RefreshToken string `json:"refresh_token,omitempty"` // OAuth refresh token
 	AccountType  string `json:"account_type"`            // "oauth" | "apikey"
+	PlanType     string `json:"plan_type"`               // "claude_max_20x" etc
+	PlanDisplay  string `json:"plan_display"`            // "Max (20x)" etc
+	Email        string `json:"email,omitempty"`
 	CreatedAt    string `json:"created_at"`
 	UpdatedAt    string `json:"updated_at"`
 }
@@ -112,6 +115,9 @@ CREATE TABLE IF NOT EXISTS accounts (
 	fingerprint TEXT NOT NULL DEFAULT '',
 	refresh_token TEXT NOT NULL DEFAULT '',
 	account_type TEXT NOT NULL DEFAULT 'apikey',
+	plan_type TEXT NOT NULL DEFAULT '',
+	plan_display TEXT NOT NULL DEFAULT '',
+	email TEXT NOT NULL DEFAULT '',
 	created_at DATETIME DEFAULT (datetime('now')),
 	updated_at DATETIME DEFAULT (datetime('now'))
 );
@@ -198,6 +204,9 @@ func NewStore(cfg *Config) (*Store, error) {
 	// Migrations for existing databases
 	db.Exec("ALTER TABLE accounts ADD COLUMN refresh_token TEXT NOT NULL DEFAULT ''")
 	db.Exec("ALTER TABLE accounts ADD COLUMN account_type TEXT NOT NULL DEFAULT 'apikey'")
+	db.Exec("ALTER TABLE accounts ADD COLUMN plan_type TEXT NOT NULL DEFAULT ''")
+	db.Exec("ALTER TABLE accounts ADD COLUMN plan_display TEXT NOT NULL DEFAULT ''")
+	db.Exec("ALTER TABLE accounts ADD COLUMN email TEXT NOT NULL DEFAULT ''")
 
 
 	s := &Store{
@@ -306,7 +315,8 @@ func (s *Store) flushLogs(entries []LogEntry) {
 func (s *Store) ListAccounts() ([]Account, error) {
 	rows, err := s.db.Query(`
 		SELECT id, name, token, status, rpm, max_concur, proxy_id,
-		       total_reqs, token_expiry, fingerprint, refresh_token, account_type, created_at, updated_at
+		       total_reqs, token_expiry, fingerprint, refresh_token, account_type,
+		       plan_type, plan_display, email, created_at, updated_at
 		FROM accounts ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -317,7 +327,8 @@ func (s *Store) ListAccounts() ([]Account, error) {
 	for rows.Next() {
 		var a Account
 		if err := rows.Scan(&a.ID, &a.Name, &a.Token, &a.Status, &a.RPM, &a.MaxConcur,
-			&a.ProxyID, &a.TotalReqs, &a.TokenExpiry, &a.Fingerprint, &a.RefreshToken, &a.AccountType, &a.CreatedAt, &a.UpdatedAt); err != nil {
+			&a.ProxyID, &a.TotalReqs, &a.TokenExpiry, &a.Fingerprint, &a.RefreshToken, &a.AccountType,
+			&a.PlanType, &a.PlanDisplay, &a.Email, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, a)
@@ -329,9 +340,11 @@ func (s *Store) GetAccount(id int64) (*Account, error) {
 	var a Account
 	err := s.db.QueryRow(`
 		SELECT id, name, token, status, rpm, max_concur, proxy_id,
-		       total_reqs, token_expiry, fingerprint, refresh_token, account_type, created_at, updated_at
+		       total_reqs, token_expiry, fingerprint, refresh_token, account_type,
+		       plan_type, plan_display, email, created_at, updated_at
 		FROM accounts WHERE id=?`, id).Scan(&a.ID, &a.Name, &a.Token, &a.Status, &a.RPM, &a.MaxConcur,
-		&a.ProxyID, &a.TotalReqs, &a.TokenExpiry, &a.Fingerprint, &a.RefreshToken, &a.AccountType, &a.CreatedAt, &a.UpdatedAt)
+		&a.ProxyID, &a.TotalReqs, &a.TokenExpiry, &a.Fingerprint, &a.RefreshToken, &a.AccountType,
+		&a.PlanType, &a.PlanDisplay, &a.Email, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -358,6 +371,13 @@ func (s *Store) CreateAccount(name, token, fingerprint, refreshToken string, rpm
 		return 0, err
 	}
 	return res.LastInsertId()
+}
+
+func (s *Store) UpdateAccountPlan(id int64, planType, planDisplay, email string) error {
+	_, err := s.db.Exec(
+		`UPDATE accounts SET plan_type=?, plan_display=?, email=?, updated_at=datetime('now') WHERE id=?`,
+		planType, planDisplay, email, id)
+	return err
 }
 
 func (s *Store) UpdateAccount(id int64, name, fingerprint string, rpm, maxConcur int) error {

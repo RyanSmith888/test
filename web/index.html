@@ -253,12 +253,24 @@ tr:hover td { background: #fafbfc; }
           <span x-show="verifying">验证中...</span>
         </button>
       </div>
-      <div x-show="verifyResult!==null" class="lg:col-span-3 text-sm -mt-1">
-        <div x-show="verifyResult===true" class="text-green-600 flex items-center gap-1">
-          <span class="font-bold">&#10003;</span> Token 有效（<span x-text="verifyTokenType"></span>），可以保存
+      <div x-show="verifyInfo" class="lg:col-span-3 text-sm -mt-1">
+        <div x-show="verifyInfo?.valid" class="bg-green-50 border border-green-200 rounded-lg p-3 space-y-1">
+          <div class="text-green-700 font-medium">&#10003; 验证成功</div>
+          <div class="text-xs text-gray-600" x-show="verifyInfo?.plan_display">订阅类型：<span class="font-semibold" x-text="verifyInfo?.plan_display"></span></div>
+          <div class="text-xs text-gray-600" x-show="verifyInfo?.email">邮箱：<span x-text="verifyInfo?.email"></span></div>
+          <div class="text-xs text-gray-600" x-show="verifyInfo?.five_hour_utilization!==undefined">
+            5h 用量：<span class="font-mono" x-text="Math.round((verifyInfo?.five_hour_utilization||0)*100)+'%'"></span>
+          </div>
+          <div class="text-xs text-gray-600" x-show="verifyInfo?.seven_day_utilization!==undefined">
+            7d 用量：<span class="font-mono" x-text="Math.round((verifyInfo?.seven_day_utilization||0)*100)+'%'"></span>
+          </div>
+          <div x-show="verifyInfo?.has_claude_code===false" class="text-red-500 text-xs font-medium mt-1">
+            &#10007; 该账号没有 Claude Code 资格（需要 Pro 或 Max 订阅）
+          </div>
         </div>
-        <div x-show="verifyResult===false" class="text-red-500">
-          &#10007; Token 无效或已过期，请重新从 claude.ai Settings 生成
+        <div x-show="verifyInfo && !verifyInfo?.valid" class="bg-red-50 border border-red-200 rounded-lg p-3">
+          <div class="text-red-600 font-medium">&#10007; 验证失败</div>
+          <div class="text-xs text-red-500 mt-1" x-text="verifyInfo?.error||'Token 无效或已过期'"></div>
         </div>
       </div>
       <div class="lg:col-span-3 text-[11px] text-gray-400 -mt-1 leading-relaxed">
@@ -274,7 +286,8 @@ tr:hover td { background: #fafbfc; }
       </div>
     </div>
     <div class="flex gap-2 mt-3">
-      <button @click="addAccount()" class="btn btn-primary btn-sm">保存</button>
+      <button @click="addAccount()" class="btn btn-primary btn-sm"
+              :disabled="verifyInfo && verifyInfo.has_claude_code===false">保存</button>
       <button @click="showAddAccount=false" class="btn btn-ghost btn-sm">取消</button>
     </div>
   </div>
@@ -282,7 +295,7 @@ tr:hover td { background: #fafbfc; }
   <div class="card overflow-hidden">
     <table>
       <thead>
-        <tr><th>名称</th><th>类型</th><th>状态</th><th>容量</th><th>代理</th><th>Token 到期</th><th>请求数</th><th>操作</th></tr>
+        <tr><th>名称</th><th>类型</th><th>用量</th><th>状态</th><th>容量</th><th>代理</th><th>请求数</th><th>操作</th></tr>
       </thead>
       <tbody>
         <template x-for="a in accountsWithState" :key="a.id">
@@ -292,8 +305,32 @@ tr:hover td { background: #fafbfc; }
               <div class="text-[11px] text-gray-400 font-mono" x-text="'#'+a.id+' '+a.token"></div>
             </td>
             <td>
-              <span class="badge" :class="a.account_type==='oauth'?'badge-blue':'badge-gray'"
-                    x-text="a.account_type==='oauth'?'订阅':'API Key'"></span>
+              <span class="badge text-[11px]" :class="planBadgeClass(a)" x-text="a.plan_display||a.account_type"></span>
+              <div class="text-[10px] text-gray-400 mt-0.5 truncate" x-show="a.email" x-text="a.email"></div>
+            </td>
+            <!-- 用量 (5h/7d) -->
+            <td style="min-width:120px">
+              <template x-if="a.account_type==='oauth'">
+                <div class="space-y-1">
+                  <div>
+                    <div class="flex justify-between text-[10px] mb-0.5">
+                      <span class="text-gray-400">5h</span>
+                      <span class="font-mono text-gray-600" x-text="Math.round((usageMap[a.id]?.five_hour||0)*100)+'%'"></span>
+                    </div>
+                    <div class="progress-bar"><div class="progress-bar-fill" :class="usageBarClass(usageMap[a.id]?.five_hour||0)" :style="'width:'+Math.min(100,(usageMap[a.id]?.five_hour||0)*100)+'%'"></div></div>
+                  </div>
+                  <div>
+                    <div class="flex justify-between text-[10px] mb-0.5">
+                      <span class="text-gray-400">7d</span>
+                      <span class="font-mono text-gray-600" x-text="Math.round((usageMap[a.id]?.seven_day||0)*100)+'%'"></span>
+                    </div>
+                    <div class="progress-bar"><div class="progress-bar-fill" :class="usageBarClass(usageMap[a.id]?.seven_day||0)" :style="'width:'+Math.min(100,(usageMap[a.id]?.seven_day||0)*100)+'%'"></div></div>
+                  </div>
+                </div>
+              </template>
+              <template x-if="a.account_type!=='oauth'">
+                <span class="text-[11px] text-gray-300">-</span>
+              </template>
             </td>
             <td>
               <div class="flex items-center gap-2">
@@ -333,7 +370,6 @@ tr:hover td { background: #fafbfc; }
                 <span class="badge badge-red text-[11px]">无代理</span>
               </template>
             </td>
-            <td class="text-xs" x-text="tokenExpiryText(a)" :class="tokenExpiryClass(a)"></td>
             <td class="font-mono text-xs text-gray-600" x-text="(a.total_reqs||0).toLocaleString()"></td>
             <td>
               <button @click="confirmDelete('account', a.id, a.name)" class="btn btn-danger btn-sm">删除</button>
@@ -616,8 +652,11 @@ function gateway() {
 
     // Token verify
     verifying: false,
-    verifyResult: null,
-    verifyTokenType: '',
+    verifyInfo: null,
+
+    // Usage data per account id
+    usageMap: {},
+    usageTimer: null,
 
     // Settings
     purgeDays: 90,
@@ -727,6 +766,10 @@ function gateway() {
         if (this.activeTab === 'pool' || this.activeTab === 'accounts') this.loadPoolStatus();
         if (this.activeTab === 'dashboard') this.loadDashboard();
       }, 5000);
+      // Usage polling every 60s
+      if (this.usageTimer) clearInterval(this.usageTimer);
+      this.refreshAllUsage();
+      this.usageTimer = setInterval(() => this.refreshAllUsage(), 60000);
     },
 
     switchTab(id) {
@@ -827,24 +870,34 @@ function gateway() {
     async verifyToken() {
       if (!this.newAccount.token) return;
       this.verifying = true;
-      this.verifyResult = null;
+      this.verifyInfo = null;
       try {
-        const data = await this.api('POST','/accounts/verify', { token: this.newAccount.token });
-        this.verifyResult = data.valid;
-        this.verifyTokenType = data.token_type || '';
-        if (!data.valid && data.error) console.error('Token 验证失败:', data.error);
-      } catch(e) { this.verifyResult = false; }
+        this.verifyInfo = await this.api('POST','/accounts/verify', { token: this.newAccount.token });
+        // Auto-fill name from email if empty
+        if (this.verifyInfo.email && !this.newAccount.name) {
+          this.newAccount.name = this.verifyInfo.email.split('@')[0];
+        }
+      } catch(e) { this.verifyInfo = { valid: false, error: e.message }; }
       finally { this.verifying = false; }
     },
 
     async addAccount() {
       try {
-        await this.api('POST','/accounts', this.newAccount);
+        const res = await this.api('POST','/accounts', this.newAccount);
+        // Save plan info if we have it from verify
+        if (this.verifyInfo && res.id && this.verifyInfo.plan_type) {
+          await this.api('PUT','/accounts/'+res.id, {
+            plan_type: this.verifyInfo.plan_type,
+            plan_display: this.verifyInfo.plan_display || '',
+            email: this.verifyInfo.email || '',
+          }).catch(()=>{});
+        }
         this.newAccount = { name:'', token:'', fingerprint:'', refresh_token:'', rpm:20, max_concur:5 };
         this.showAddAccount = false;
-        this.verifyResult = null;
+        this.verifyInfo = null;
         await this.loadAccounts();
         this.toast('账号添加成功', 'success');
+        this.refreshAllUsage();
       } catch(e) { this.toast(e.message,'error'); }
     },
 
@@ -928,25 +981,37 @@ function gateway() {
     statusText(s) {
       return { active:'正常', disabled:'已禁用', refreshing:'刷新中', cooldown:'冷却中' }[s] || s;
     },
-    tokenExpiryText(a) {
-      const expiry = a._token_expiry || a.token_expiry;
-      if (!expiry || expiry === 0) return '永不过期';
-      const rem = (a._token_remaining_s !== undefined) ? a._token_remaining_s : (expiry - Date.now()/1000);
-      if (rem <= 0) return '已过期';
-      if (rem < 3600) return '不足1小时';
-      if (rem < 86400) return '不足1天';
-      if (rem < 604800) return '不足7天';
-      return '正常';
+    planBadgeClass(a) {
+      const p = a.plan_display || a.account_type;
+      if (p.includes('Max') || p.includes('20x')) return 'badge-blue';
+      if (p.includes('Pro') || p.includes('5x')) return 'badge-green';
+      if (p.includes('Team') || p.includes('Enterprise')) return 'badge-yellow';
+      if (a.account_type === 'oauth') return 'badge-blue';
+      return 'badge-gray';
     },
-    tokenExpiryClass(a) {
-      const expiry = a._token_expiry || a.token_expiry;
-      if (!expiry || expiry === 0) return 'text-gray-400';
-      const rem = (a._token_remaining_s !== undefined) ? a._token_remaining_s : (expiry - Date.now()/1000);
-      if (rem <= 0) return 'text-red-500 font-medium';
-      if (rem < 3600) return 'text-red-500 font-medium';
-      if (rem < 86400) return 'text-amber-600 font-medium';
-      if (rem < 604800) return 'text-amber-600';
-      return 'text-green-600';
+    usageBarClass(v) {
+      if (v >= 0.85) return 'bg-red-500';
+      if (v >= 0.6) return 'bg-amber-500';
+      return 'bg-emerald-500';
+    },
+    async refreshAllUsage() {
+      for (const a of this.accounts) {
+        if (a.account_type !== 'oauth') continue;
+        try {
+          const data = await this.api('GET','/accounts/'+a.id+'/usage');
+          if (data.supported !== false) {
+            this.usageMap[a.id] = {
+              five_hour: data.five_hour_utilization || 0,
+              seven_day: data.seven_day_utilization || 0,
+            };
+            // Update plan info in account list
+            if (data.plan_display && a.plan_display !== data.plan_display) {
+              a.plan_display = data.plan_display;
+              a.email = data.email || a.email;
+            }
+          }
+        } catch(e) {}
+      }
     },
     shortModel(m) { return (m||'unknown').replace('claude-','').replace('-20250514','').replace('-20241022',''); },
     toast(msg, type='info') {
