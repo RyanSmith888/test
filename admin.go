@@ -245,21 +245,32 @@ func (ah *AdminHandler) verifyToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	testBody := `{"model":"claude-haiku-4-5-20251001","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}`
-	req, err := http.NewRequest("POST", ah.cfg.UpstreamURL+"/v1/messages", strings.NewReader(testBody))
-	if err != nil {
-		writeJSON(w, 500, map[string]any{"error": err.Error()})
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("anthropic-version", "2023-06-01")
+	// 根据 token 类型选择验证端点
+	var verifyURL string
+	var headers map[string]string
 
 	if isOAuthToken(body.Token) {
-		req.Header.Set("Authorization", "Bearer "+body.Token)
-		req.Header.Set("anthropic-beta", "claude-code-20250219,oauth-2025-04-20")
+		verifyURL = oauthUpstreamURL + "/v1/messages"
+		headers = map[string]string{
+			"Authorization":     "Bearer " + body.Token,
+			"Content-Type":      "application/json",
+			"anthropic-version": "2023-06-01",
+			"anthropic-beta":    "claude-code-20250219,oauth-2025-04-20",
+		}
 	} else {
-		req.Header.Set("x-api-key", body.Token)
-		req.Header.Set("Authorization", "Bearer "+body.Token)
+		verifyURL = ah.cfg.UpstreamURL + "/v1/messages"
+		headers = map[string]string{
+			"x-api-key":         body.Token,
+			"Authorization":     "Bearer " + body.Token,
+			"Content-Type":      "application/json",
+			"anthropic-version": "2023-06-01",
+		}
+	}
+
+	testBody := `{"model":"claude-haiku-4-5-20251001","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}`
+	req, _ := http.NewRequest("POST", verifyURL, strings.NewReader(testBody))
+	for k, v := range headers {
+		req.Header.Set(k, v)
 	}
 
 	client := &http.Client{Timeout: 15 * time.Second}
@@ -273,20 +284,22 @@ func (ah *AdminHandler) verifyToken(w http.ResponseWriter, r *http.Request) {
 
 	valid := resp.StatusCode == 200 || resp.StatusCode == 400 || resp.StatusCode == 529
 
-	tokenType := "API Key"
+	tokenType := "API Key (api03)"
 	if strings.HasPrefix(body.Token, "sk-ant-sid02-") {
 		tokenType = "Session Token (sid02)"
 	} else if strings.HasPrefix(body.Token, "sk-ant-oat01-") {
 		tokenType = "OAuth Token (oat01)"
 	}
 
+	accountType := detectAccountType(body.Token)
 	result := map[string]any{
-		"valid":       valid,
-		"status_code": resp.StatusCode,
-		"token_type":  tokenType,
+		"valid":        valid,
+		"status_code":  resp.StatusCode,
+		"token_type":   tokenType,
+		"account_type": accountType,
 	}
 	if !valid {
-		result["error"] = "Token 被 Anthropic 拒绝 (HTTP " + strconv.Itoa(resp.StatusCode) + "): " + string(rawBody)
+		result["error"] = "HTTP " + strconv.Itoa(resp.StatusCode) + ": " + string(rawBody)
 	}
 	writeJSON(w, 200, result)
 }

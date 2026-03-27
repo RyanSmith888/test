@@ -261,6 +261,10 @@ tr:hover td { background: #fafbfc; }
           &#10007; Token 无效或已过期，请重新从 claude.ai Settings 生成
         </div>
       </div>
+      <div class="lg:col-span-3 text-[11px] text-gray-400 -mt-1 leading-relaxed">
+        订阅 token（sk-ant-sid02-）：claude.ai → Settings → Claude Code → 生成 Session Key<br>
+        API Key（sk-ant-api03-）：console.anthropic.com → API Keys → 创建
+      </div>
       <input x-model="newAccount.fingerprint" placeholder="User-Agent 指纹（可选）" class="input" title="从 claude --version 获取">
       <input x-model.number="newAccount.rpm" placeholder="每分钟请求数 (默认 20)" type="number" class="input">
       <input x-model.number="newAccount.max_concur" placeholder="最大并发数 (默认 5)" type="number" class="input">
@@ -278,7 +282,7 @@ tr:hover td { background: #fafbfc; }
   <div class="card overflow-hidden">
     <table>
       <thead>
-        <tr><th>名称</th><th>状态</th><th>容量</th><th>代理</th><th>Token 到期</th><th>请求数</th><th>操作</th></tr>
+        <tr><th>名称</th><th>类型</th><th>状态</th><th>容量</th><th>代理</th><th>Token 到期</th><th>请求数</th><th>操作</th></tr>
       </thead>
       <tbody>
         <template x-for="a in accountsWithState" :key="a.id">
@@ -286,6 +290,10 @@ tr:hover td { background: #fafbfc; }
             <td>
               <div class="font-medium text-gray-900 text-sm" x-text="a.name"></div>
               <div class="text-[11px] text-gray-400 font-mono" x-text="'#'+a.id+' '+a.token"></div>
+            </td>
+            <td>
+              <span class="badge" :class="a.account_type==='oauth'?'badge-blue':'badge-gray'"
+                    x-text="a.account_type==='oauth'?'订阅':'API Key'"></span>
             </td>
             <td>
               <div class="flex items-center gap-2">

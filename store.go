@@ -26,6 +26,7 @@ type Account struct {
 	TokenExpiry int64  `json:"token_expiry"`  // unix timestamp, 0 = never
 	Fingerprint  string `json:"fingerprint"`              // optional identifier
 	RefreshToken string `json:"refresh_token,omitempty"` // OAuth refresh token
+	AccountType  string `json:"account_type"`            // "oauth" | "apikey"
 	CreatedAt    string `json:"created_at"`
 	UpdatedAt    string `json:"updated_at"`
 }
@@ -110,6 +111,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 	token_expiry INTEGER NOT NULL DEFAULT 0,
 	fingerprint TEXT NOT NULL DEFAULT '',
 	refresh_token TEXT NOT NULL DEFAULT '',
+	account_type TEXT NOT NULL DEFAULT 'apikey',
 	created_at DATETIME DEFAULT (datetime('now')),
 	updated_at DATETIME DEFAULT (datetime('now'))
 );
@@ -193,8 +195,9 @@ func NewStore(cfg *Config) (*Store, error) {
 		return nil, fmt.Errorf("init schema: %w", err)
 	}
 
-	// Migration: add refresh_token column if missing (for existing databases)
+	// Migrations for existing databases
 	db.Exec("ALTER TABLE accounts ADD COLUMN refresh_token TEXT NOT NULL DEFAULT ''")
+	db.Exec("ALTER TABLE accounts ADD COLUMN account_type TEXT NOT NULL DEFAULT 'apikey'")
 
 
 	s := &Store{
@@ -303,7 +306,7 @@ func (s *Store) flushLogs(entries []LogEntry) {
 func (s *Store) ListAccounts() ([]Account, error) {
 	rows, err := s.db.Query(`
 		SELECT id, name, token, status, rpm, max_concur, proxy_id,
-		       total_reqs, token_expiry, fingerprint, refresh_token, created_at, updated_at
+		       total_reqs, token_expiry, fingerprint, refresh_token, account_type, created_at, updated_at
 		FROM accounts ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -314,7 +317,7 @@ func (s *Store) ListAccounts() ([]Account, error) {
 	for rows.Next() {
 		var a Account
 		if err := rows.Scan(&a.ID, &a.Name, &a.Token, &a.Status, &a.RPM, &a.MaxConcur,
-			&a.ProxyID, &a.TotalReqs, &a.TokenExpiry, &a.Fingerprint, &a.RefreshToken, &a.CreatedAt, &a.UpdatedAt); err != nil {
+			&a.ProxyID, &a.TotalReqs, &a.TokenExpiry, &a.Fingerprint, &a.RefreshToken, &a.AccountType, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, a)
@@ -326,20 +329,30 @@ func (s *Store) GetAccount(id int64) (*Account, error) {
 	var a Account
 	err := s.db.QueryRow(`
 		SELECT id, name, token, status, rpm, max_concur, proxy_id,
-		       total_reqs, token_expiry, fingerprint, refresh_token, created_at, updated_at
+		       total_reqs, token_expiry, fingerprint, refresh_token, account_type, created_at, updated_at
 		FROM accounts WHERE id=?`, id).Scan(&a.ID, &a.Name, &a.Token, &a.Status, &a.RPM, &a.MaxConcur,
-		&a.ProxyID, &a.TotalReqs, &a.TokenExpiry, &a.Fingerprint, &a.RefreshToken, &a.CreatedAt, &a.UpdatedAt)
+		&a.ProxyID, &a.TotalReqs, &a.TokenExpiry, &a.Fingerprint, &a.RefreshToken, &a.AccountType, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	return &a, nil
 }
 
+func detectAccountType(token string) string {
+	if strings.HasPrefix(token, "sk-ant-sid02-") ||
+		strings.HasPrefix(token, "sk-ant-oat01-") ||
+		strings.HasPrefix(token, "sk-ant-ort01-") {
+		return "oauth"
+	}
+	return "apikey"
+}
+
 func (s *Store) CreateAccount(name, token, fingerprint, refreshToken string, rpm, maxConcur int, tokenExpiry int64) (int64, error) {
+	accountType := detectAccountType(token)
 	res, err := s.db.Exec(
-		`INSERT INTO accounts(name, token, fingerprint, refresh_token, rpm, max_concur, token_expiry)
-		 VALUES(?,?,?,?,?,?,?)`,
-		name, token, fingerprint, refreshToken, rpm, maxConcur, tokenExpiry,
+		`INSERT INTO accounts(name, token, fingerprint, refresh_token, account_type, rpm, max_concur, token_expiry)
+		 VALUES(?,?,?,?,?,?,?,?)`,
+		name, token, fingerprint, refreshToken, accountType, rpm, maxConcur, tokenExpiry,
 	)
 	if err != nil {
 		return 0, err

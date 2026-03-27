@@ -42,6 +42,9 @@ var stripHeaders = map[string]bool{
 	"session-id":      true,
 }
 
+// oauthUpstreamURL is the internal API endpoint for OAuth subscription tokens
+const oauthUpstreamURL = "https://api.claude.ai"
+
 // ============================================================================
 // ProxyHandler: core reverse proxy with retry + failover
 // ============================================================================
@@ -137,8 +140,13 @@ func (ph *ProxyHandler) doUpstreamRequest(
 
 	accountID := as.Account.ID
 
-	// Build upstream URL
-	targetURL := ph.cfg.UpstreamURL + r.URL.Path
+	// Build upstream URL — OAuth tokens must use api.claude.ai
+	var targetURL string
+	if isOAuthToken(as.Account.Token) || as.Account.AccountType == "oauth" {
+		targetURL = oauthUpstreamURL + r.URL.Path
+	} else {
+		targetURL = ph.cfg.UpstreamURL + r.URL.Path
+	}
 	if r.URL.RawQuery != "" {
 		targetURL += "?" + r.URL.RawQuery
 	}
@@ -171,7 +179,7 @@ func (ph *ProxyHandler) doUpstreamRequest(
 	upReq.Header.Set("Authorization", "Bearer "+as.Account.Token)
 
 	// OAuth token (sid02/oat01/ort01) 需要携带特定 beta headers
-	if isOAuthToken(as.Account.Token) {
+	if isOAuthToken(as.Account.Token) || as.Account.AccountType == "oauth" {
 		existing := upReq.Header.Get("anthropic-beta")
 		required := []string{"claude-code-20250219", "oauth-2025-04-20"}
 		for _, r := range required {
