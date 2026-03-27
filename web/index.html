@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Claude Gateway Console</title>
+<title>Claude Gateway - 管理后台</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
@@ -11,13 +11,11 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script>
 tailwind.config = {
-  darkMode: 'class',
   theme: {
     extend: {
       fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
       colors: {
-        surface: { 50: '#f8fafc', 100: '#1e293b', 200: '#1a2332', 300: '#151d2b', 400: '#111827', 500: '#0d1117', 600: '#0a0e14' },
-        accent: { DEFAULT: '#6366f1', light: '#818cf8', dark: '#4f46e5', glow: 'rgba(99,102,241,0.15)' },
+        brand: { 50:'#ecfdf5', 100:'#d1fae5', 200:'#a7f3d0', 300:'#6ee7b7', 400:'#34d399', 500:'#10b981', 600:'#059669', 700:'#047857' },
       }
     }
   }
@@ -25,156 +23,183 @@ tailwind.config = {
 </script>
 <style>
 [x-cloak] { display: none !important; }
-* { scrollbar-width: thin; scrollbar-color: #334155 transparent; }
-body { background: #0a0e14; color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; }
-.glass { background: rgba(30,41,59,0.6); backdrop-filter: blur(12px); border: 1px solid rgba(71,85,105,0.3); }
-.glass-hover:hover { background: rgba(30,41,59,0.8); border-color: rgba(99,102,241,0.4); }
-.stat-card { background: linear-gradient(135deg, rgba(30,41,59,0.8), rgba(15,23,42,0.9)); border: 1px solid rgba(71,85,105,0.25); }
-.stat-card:hover { border-color: rgba(99,102,241,0.4); transform: translateY(-1px); }
-.glow-border { box-shadow: 0 0 0 1px rgba(99,102,241,0.3), 0 0 20px rgba(99,102,241,0.08); }
-.tab-pill { transition: all 0.2s ease; }
-.tab-pill.active { background: rgba(99,102,241,0.15); color: #a5b4fc; box-shadow: inset 0 -2px 0 #6366f1; }
-.badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 9999px; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
-.badge-green { background: rgba(34,197,94,0.15); color: #4ade80; }
-.badge-yellow { background: rgba(234,179,8,0.15); color: #facc15; }
-.badge-red { background: rgba(239,68,68,0.15); color: #f87171; }
-.badge-blue { background: rgba(59,130,246,0.15); color: #60a5fa; }
-.badge-gray { background: rgba(148,163,184,0.15); color: #94a3b8; }
-.input { background: rgba(15,23,42,0.8); border: 1px solid rgba(71,85,105,0.4); border-radius: 8px; padding: 8px 12px; font-size: 0.875rem; color: #e2e8f0; transition: border-color 0.15s; outline: none; }
-.input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
-.input::placeholder { color: #475569; }
+* { scrollbar-width: thin; scrollbar-color: #cbd5e1 transparent; }
+body { background: #f8fafc; color: #1e293b; font-family: 'Inter', system-ui, sans-serif; }
+.sidebar-item { transition: all 0.15s; border-left: 3px solid transparent; }
+.sidebar-item.active { background: #ecfdf5; color: #059669; border-left-color: #10b981; font-weight: 600; }
+.sidebar-item:not(.active):hover { background: #f1f5f9; color: #334155; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; padding: 10px 14px; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.05em; color: #64748b; background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
+td { padding: 12px 14px; font-size: 0.8125rem; border-bottom: 1px solid #f1f5f9; color: #334155; }
+tr:hover td { background: #fafbfc; }
+.card { background: white; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+.input { background: white; border: 1px solid #d1d5db; border-radius: 8px; padding: 8px 12px; font-size: 0.875rem; color: #1e293b; transition: border-color 0.15s; outline: none; }
+.input:focus { border-color: #10b981; box-shadow: 0 0 0 3px rgba(16,185,129,0.1); }
+.input::placeholder { color: #9ca3af; }
 .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; font-size: 0.8125rem; font-weight: 600; transition: all 0.15s; cursor: pointer; border: none; }
-.btn-primary { background: #6366f1; color: white; }
-.btn-primary:hover { background: #4f46e5; box-shadow: 0 4px 12px rgba(99,102,241,0.3); }
-.btn-success { background: rgba(34,197,94,0.15); color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
-.btn-success:hover { background: rgba(34,197,94,0.25); }
-.btn-danger { background: rgba(239,68,68,0.1); color: #f87171; border: 1px solid rgba(239,68,68,0.2); }
-.btn-danger:hover { background: rgba(239,68,68,0.2); }
-.btn-ghost { background: transparent; color: #94a3b8; border: 1px solid rgba(71,85,105,0.3); }
-.btn-ghost:hover { background: rgba(71,85,105,0.2); color: #e2e8f0; }
-.btn-sm { padding: 4px 10px; font-size: 0.75rem; }
-table { width: 100%; border-collapse: separate; border-spacing: 0; }
-th { text-align: left; padding: 10px 16px; font-size: 0.7rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; border-bottom: 1px solid rgba(71,85,105,0.3); }
-td { padding: 10px 16px; font-size: 0.8125rem; border-bottom: 1px solid rgba(71,85,105,0.15); }
-tr:hover td { background: rgba(99,102,241,0.03); }
+.btn-primary { background: #10b981; color: white; }
+.btn-primary:hover { background: #059669; box-shadow: 0 2px 8px rgba(16,185,129,0.3); }
+.btn-danger { background: #fef2f2; color: #ef4444; border: 1px solid #fecaca; }
+.btn-danger:hover { background: #fee2e2; }
+.btn-ghost { background: white; color: #64748b; border: 1px solid #e2e8f0; }
+.btn-ghost:hover { background: #f8fafc; color: #334155; }
+.btn-sm { padding: 5px 10px; font-size: 0.75rem; }
+.badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: 9999px; font-size: 0.7rem; font-weight: 600; letter-spacing: 0.03em; }
+.badge-green { background: #ecfdf5; color: #059669; }
+.badge-yellow { background: #fffbeb; color: #d97706; }
+.badge-red { background: #fef2f2; color: #ef4444; }
+.badge-blue { background: #eff6ff; color: #2563eb; }
+.badge-gray { background: #f1f5f9; color: #64748b; }
+.toggle { position: relative; width: 44px; height: 24px; border-radius: 12px; cursor: pointer; transition: background 0.2s; }
+.toggle.on { background: #10b981; }
+.toggle.off { background: #d1d5db; }
+.toggle::after { content: ''; position: absolute; top: 2px; width: 20px; height: 20px; border-radius: 50%; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.15); transition: left 0.2s; }
+.toggle.on::after { left: 22px; }
+.toggle.off::after { left: 2px; }
+.progress-bar { height: 6px; border-radius: 3px; background: #f1f5f9; overflow: hidden; }
+.progress-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+.stat-card { background: white; border: 1px solid #e2e8f0; border-radius: 12px; padding: 20px; transition: all 0.15s; }
+.stat-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); transform: translateY(-1px); }
 .toast { animation: slideIn 0.3s ease, fadeOut 0.3s ease 2.7s; }
 @keyframes slideIn { from { transform: translateX(100%); opacity:0 } to { transform: translateX(0); opacity:1 } }
 @keyframes fadeOut { to { opacity:0; transform: translateY(-10px) } }
-.fade-in { animation: fadeIn 0.3s ease; }
-@keyframes fadeIn { from { opacity:0; transform: translateY(8px) } to { opacity:1; transform: translateY(0) } }
-.progress-ring { transition: stroke-dashoffset 0.3s ease; }
+.fade-in { animation: fadeIn 0.2s ease; }
+@keyframes fadeIn { from { opacity:0; transform: translateY(6px) } to { opacity:1; transform: translateY(0) } }
 </style>
 </head>
 <body>
-<div x-data="gateway()" x-init="init()" x-cloak class="min-h-screen flex">
+<div x-data="gateway()" x-init="init()" x-cloak>
 
-<!-- Toast Container -->
+<!-- ==================== LOGIN PAGE ==================== -->
+<div x-show="!loggedIn" class="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100">
+  <div class="card p-8 w-full max-w-sm shadow-lg">
+    <div class="text-center mb-8">
+      <div class="w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white text-2xl font-bold shadow-md mb-4">C</div>
+      <h1 class="text-xl font-bold text-gray-900">Claude Gateway</h1>
+      <p class="text-sm text-gray-400 mt-1">管理后台登录</p>
+    </div>
+    <div x-show="loginError" class="bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-4 text-sm text-red-600" x-text="loginError"></div>
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-500 mb-1">管理员密码</label>
+        <input x-model="loginPassword" type="password" placeholder="请输入管理员密码"
+               @keydown.enter="doLogin()"
+               class="input w-full" autofocus>
+      </div>
+      <button @click="doLogin()" class="btn btn-primary w-full justify-center py-2.5">登 录</button>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== MAIN APP ==================== -->
+<div x-show="loggedIn" class="min-h-screen flex">
+
+<!-- Toast -->
 <div class="fixed top-4 right-4 z-50 flex flex-col gap-2">
   <template x-for="(t,i) in toasts" :key="i">
-    <div class="toast glass rounded-lg px-4 py-3 text-sm flex items-center gap-2 max-w-sm"
-         :class="t.type==='error'?'border-red-500/30':'border-green-500/30'">
-      <span x-text="t.type==='error'?'&#10007;':'&#10003;'" :class="t.type==='error'?'text-red-400':'text-green-400'" class="text-lg"></span>
+    <div class="toast card px-4 py-3 text-sm flex items-center gap-2 max-w-sm"
+         :class="t.type==='error'?'border-red-300':'border-green-300'">
+      <span x-text="t.type==='error'?'\u2717':'\u2713'" :class="t.type==='error'?'text-red-500':'text-green-500'" class="text-lg font-bold"></span>
       <span x-text="t.msg"></span>
     </div>
   </template>
 </div>
 
 <!-- Sidebar -->
-<aside class="w-60 flex-shrink-0 border-r border-slate-700/30 bg-surface-500/50 flex flex-col">
-  <div class="px-5 py-5 border-b border-slate-700/30">
+<aside class="w-56 flex-shrink-0 border-r border-gray-200 bg-white flex flex-col h-screen sticky top-0">
+  <div class="px-5 py-5 border-b border-gray-100">
     <div class="flex items-center gap-3">
-      <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold">C</div>
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white text-sm font-bold shadow-sm">C</div>
       <div>
-        <div class="text-sm font-semibold text-white">Claude Gateway</div>
-        <div class="text-xs text-slate-500">Admin Console</div>
+        <div class="text-sm font-bold text-gray-900">Claude Gateway</div>
+        <div class="text-[11px] text-gray-400">管理后台</div>
       </div>
     </div>
   </div>
 
-  <nav class="flex-1 px-3 py-4 space-y-1">
+  <nav class="flex-1 px-3 py-4 space-y-0.5">
     <template x-for="tab in tabs" :key="tab.id">
       <button @click="switchTab(tab.id)"
-              :class="activeTab===tab.id ? 'bg-indigo-500/10 text-indigo-300 border-l-2 border-indigo-500' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-700/30 border-l-2 border-transparent'"
-              class="w-full flex items-center gap-3 px-3 py-2.5 rounded-r-lg text-sm font-medium transition-all">
+              :class="activeTab===tab.id ? 'active' : ''"
+              class="sidebar-item w-full flex items-center gap-3 px-3 py-2.5 rounded-r-lg text-sm text-gray-500">
         <span x-html="tab.icon" class="w-4 h-4"></span>
         <span x-text="tab.label"></span>
       </button>
     </template>
   </nav>
 
-  <div class="px-4 py-4 border-t border-slate-700/30">
-    <div class="flex items-center gap-2 text-xs text-slate-500">
-      <div class="w-2 h-2 rounded-full" :class="connected?'bg-green-400 animate-pulse':'bg-red-400'"></div>
-      <span x-text="connected?'Connected':'Disconnected'"></span>
+  <div class="px-4 py-4 border-t border-gray-100">
+    <div class="flex items-center gap-2 text-xs text-gray-400 mb-3">
+      <div class="w-2 h-2 rounded-full" :class="connected?'bg-green-400':'bg-red-400'"></div>
+      <span x-text="connected?'已连接':'未连接'"></span>
     </div>
-    <div class="mt-2">
-      <input x-model="adminKey" type="password" placeholder="Admin Key"
-             @keydown.enter="connect()"
-             class="input w-full text-xs">
-      <button @click="connect()" class="btn btn-primary w-full mt-2 justify-center text-xs">Connect</button>
-    </div>
+    <input x-model="adminKey" type="password" placeholder="Admin Key (后端密钥)"
+           @keydown.enter="connect()"
+           class="input w-full text-xs mb-2">
+    <button @click="connect()" class="btn btn-primary w-full justify-center text-xs">连接后端</button>
+    <button @click="doLogout()" class="btn btn-ghost w-full justify-center text-xs mt-2">退出登录</button>
   </div>
 </aside>
 
 <!-- Main Content -->
-<main class="flex-1 overflow-y-auto">
+<main class="flex-1 overflow-y-auto min-h-screen">
 
-<!-- ===== Dashboard ===== -->
+<!-- ===== 仪表盘 ===== -->
 <div x-show="activeTab==='dashboard'" class="p-6 fade-in">
-  <h2 class="text-lg font-semibold text-white mb-6">Dashboard Overview</h2>
+  <div class="mb-6">
+    <h2 class="text-xl font-bold text-gray-900">仪表盘</h2>
+    <p class="text-sm text-gray-400 mt-0.5">网关运行状态概览</p>
+  </div>
 
-  <!-- Stat Cards -->
   <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-    <div class="stat-card rounded-xl p-4 transition-all">
-      <div class="text-xs text-slate-500 uppercase tracking-wider mb-1">Active Accounts</div>
-      <div class="text-2xl font-bold text-white" x-text="overview.active_accounts||0"></div>
-      <div class="text-xs text-slate-500 mt-1"><span x-text="overview.total_accounts||0"></span> total</div>
+    <div class="stat-card">
+      <div class="text-xs text-gray-400 tracking-wider mb-1">活跃账号</div>
+      <div class="text-2xl font-bold text-gray-900" x-text="overview.active_accounts||0"></div>
+      <div class="text-xs text-gray-400 mt-1">共 <span x-text="overview.total_accounts||0"></span> 个</div>
     </div>
-    <div class="stat-card rounded-xl p-4 transition-all">
-      <div class="text-xs text-slate-500 uppercase tracking-wider mb-1">API Keys</div>
-      <div class="text-2xl font-bold text-white" x-text="overview.total_keys||0"></div>
-      <div class="text-xs text-slate-500 mt-1">enabled</div>
+    <div class="stat-card">
+      <div class="text-xs text-gray-400 tracking-wider mb-1">API 密钥</div>
+      <div class="text-2xl font-bold text-gray-900" x-text="overview.total_keys||0"></div>
+      <div class="text-xs text-gray-400 mt-1">已启用</div>
     </div>
-    <div class="stat-card rounded-xl p-4 transition-all">
-      <div class="text-xs text-slate-500 uppercase tracking-wider mb-1">Today Requests</div>
-      <div class="text-2xl font-bold text-white" x-text="(overview.today_requests||0).toLocaleString()"></div>
-      <div class="text-xs mt-1" :class="(overview.today_errors||0)>0?'text-red-400':'text-green-400'">
-        <span x-text="overview.today_errors||0"></span> errors
+    <div class="stat-card">
+      <div class="text-xs text-gray-400 tracking-wider mb-1">今日请求</div>
+      <div class="text-2xl font-bold text-gray-900" x-text="(overview.today_requests||0).toLocaleString()"></div>
+      <div class="text-xs mt-1" :class="(overview.today_errors||0)>0?'text-red-500':'text-green-500'">
+        <span x-text="overview.today_errors||0"></span> 个错误
       </div>
     </div>
-    <div class="stat-card rounded-xl p-4 transition-all">
-      <div class="text-xs text-slate-500 uppercase tracking-wider mb-1">Avg Latency</div>
-      <div class="text-2xl font-bold text-white"><span x-text="overview.avg_latency_ms||0"></span><span class="text-sm text-slate-500 ml-1">ms</span></div>
-      <div class="text-xs text-slate-500 mt-1">today</div>
+    <div class="stat-card">
+      <div class="text-xs text-gray-400 tracking-wider mb-1">平均延迟</div>
+      <div class="text-2xl font-bold text-gray-900"><span x-text="overview.avg_latency_ms||0"></span><span class="text-sm text-gray-400 ml-1">ms</span></div>
+      <div class="text-xs text-gray-400 mt-1">今日</div>
     </div>
   </div>
 
-  <!-- Charts -->
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-    <div class="glass rounded-xl p-5">
-      <h3 class="text-sm font-semibold text-slate-300 mb-4">Request Volume (30 days)</h3>
+    <div class="card p-5">
+      <h3 class="text-sm font-semibold text-gray-700 mb-4">请求量 (近30天)</h3>
       <div class="h-56"><canvas id="chartDaily"></canvas></div>
     </div>
-    <div class="glass rounded-xl p-5">
-      <h3 class="text-sm font-semibold text-slate-300 mb-4">Hourly Traffic (48h)</h3>
+    <div class="card p-5">
+      <h3 class="text-sm font-semibold text-gray-700 mb-4">每小时流量 (48h)</h3>
       <div class="h-56"><canvas id="chartHourly"></canvas></div>
     </div>
   </div>
 
-  <!-- Recent logs + Model breakdown -->
   <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-    <div class="lg:col-span-2 glass rounded-xl p-5">
-      <h3 class="text-sm font-semibold text-slate-300 mb-4">Recent Requests</h3>
+    <div class="lg:col-span-2 card p-5">
+      <h3 class="text-sm font-semibold text-gray-700 mb-4">最近请求</h3>
       <div class="overflow-x-auto max-h-72 overflow-y-auto">
         <table>
-          <thead class="sticky top-0 bg-surface-300"><tr><th>Time</th><th>Key</th><th>Account</th><th>Model</th><th>Status</th><th>Latency</th></tr></thead>
+          <thead class="sticky top-0"><tr><th>时间</th><th>密钥</th><th>账号</th><th>模型</th><th>状态</th><th>延迟</th></tr></thead>
           <tbody>
             <template x-for="l in recentLogs" :key="l.id">
               <tr>
-                <td class="font-mono text-xs text-slate-400" x-text="l.created_at?.substr(11,8)||'-'"></td>
+                <td class="font-mono text-xs text-gray-400" x-text="l.created_at?.substr(11,8)||'-'"></td>
                 <td class="text-xs" x-text="l.key_name"></td>
                 <td class="text-xs" x-text="l.account"></td>
-                <td class="text-xs font-mono text-slate-400" x-text="shortModel(l.model)"></td>
+                <td class="text-xs font-mono text-gray-400" x-text="shortModel(l.model)"></td>
                 <td><span class="badge" :class="l.status<300?'badge-green':l.status<400?'badge-blue':l.status<500?'badge-yellow':'badge-red'" x-text="l.status"></span></td>
                 <td class="text-xs font-mono" x-text="l.latency_ms+'ms'"></td>
               </tr>
@@ -183,84 +208,142 @@ tr:hover td { background: rgba(99,102,241,0.03); }
         </table>
       </div>
     </div>
-    <div class="glass rounded-xl p-5">
-      <h3 class="text-sm font-semibold text-slate-300 mb-4">Models (30 days)</h3>
+    <div class="card p-5">
+      <h3 class="text-sm font-semibold text-gray-700 mb-4">模型使用 (30天)</h3>
       <div class="space-y-3">
         <template x-for="m in modelStats" :key="m.model">
           <div>
             <div class="flex justify-between text-xs mb-1">
-              <span class="text-slate-300 font-mono" x-text="shortModel(m.model)"></span>
-              <span class="text-slate-500" x-text="m.requests.toLocaleString()"></span>
+              <span class="text-gray-600 font-mono" x-text="shortModel(m.model)"></span>
+              <span class="text-gray-400" x-text="m.requests.toLocaleString()"></span>
             </div>
-            <div class="h-1.5 bg-slate-700/50 rounded-full overflow-hidden">
-              <div class="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full transition-all"
+            <div class="progress-bar">
+              <div class="progress-bar-fill bg-emerald-500"
                    :style="'width:'+Math.min(100, m.requests/(modelStats[0]?.requests||1)*100)+'%'"></div>
             </div>
           </div>
         </template>
-        <div x-show="modelStats.length===0" class="text-xs text-slate-500 text-center py-4">No data yet</div>
+        <div x-show="modelStats.length===0" class="text-xs text-gray-400 text-center py-4">暂无数据</div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- ===== Accounts ===== -->
+<!-- ===== 账号管理 ===== -->
 <div x-show="activeTab==='accounts'" class="p-6 fade-in">
   <div class="flex items-center justify-between mb-6">
-    <h2 class="text-lg font-semibold text-white">Upstream Accounts</h2>
-    <button @click="showAddAccount=!showAddAccount" class="btn btn-primary btn-sm">+ Add Account</button>
+    <div>
+      <h2 class="text-xl font-bold text-gray-900">账号管理</h2>
+      <p class="text-sm text-gray-400 mt-0.5">管理上游 Claude 账号</p>
+    </div>
+    <div class="flex items-center gap-2">
+      <button @click="api('POST','/ops/reload').then(()=>{loadAccounts();loadPoolStatus();toast('刷新成功','success')})" class="btn btn-ghost btn-sm">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 105.64-12.36L1 10"/></svg>
+        刷新
+      </button>
+      <button @click="showAddAccount=!showAddAccount" class="btn btn-primary btn-sm">+ 添加账号</button>
+    </div>
   </div>
 
-  <!-- Add form -->
-  <div x-show="showAddAccount" x-transition class="glass rounded-xl p-5 mb-6">
+  <div x-show="showAddAccount" x-transition class="card p-5 mb-6">
+    <h3 class="text-sm font-semibold text-gray-700 mb-3">新增账号</h3>
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-      <input x-model="newAccount.name" placeholder="Account Name" class="input">
+      <input x-model="newAccount.name" placeholder="账号名称" class="input">
       <input x-model="newAccount.token" placeholder="Token / API Key" class="input lg:col-span-2">
-      <input x-model="newAccount.fingerprint" placeholder="Fingerprint (optional)" class="input">
-      <input x-model.number="newAccount.rpm" placeholder="RPM (default 60)" type="number" class="input">
-      <input x-model.number="newAccount.max_concur" placeholder="Max Concurrency (default 5)" type="number" class="input">
+      <input x-model="newAccount.fingerprint" placeholder="User-Agent 指纹（可选）" class="input" title="从 claude --version 获取">
+      <input x-model.number="newAccount.rpm" placeholder="每分钟请求数 (默认 20)" type="number" class="input">
+      <input x-model.number="newAccount.max_concur" placeholder="最大并发数 (默认 5)" type="number" class="input">
+      <div class="lg:col-span-3">
+        <textarea x-model="newAccount.refresh_token" rows="2" class="input w-full font-mono text-xs"
+          placeholder="Refresh Token（可选，自动续期）- 从 ~/.claude/.credentials.json 复制"></textarea>
+      </div>
     </div>
     <div class="flex gap-2 mt-3">
-      <button @click="addAccount()" class="btn btn-success">Save Account</button>
-      <button @click="showAddAccount=false" class="btn btn-ghost">Cancel</button>
+      <button @click="addAccount()" class="btn btn-primary btn-sm">保存</button>
+      <button @click="showAddAccount=false" class="btn btn-ghost btn-sm">取消</button>
     </div>
   </div>
 
-  <!-- Table -->
-  <div class="glass rounded-xl overflow-hidden">
+  <div class="card overflow-hidden">
     <table>
-      <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Token</th><th>RPM</th><th>Concur</th><th>Proxy</th><th>Requests</th><th>Actions</th></tr></thead>
+      <thead>
+        <tr><th>名称</th><th>状态</th><th>容量</th><th>代理</th><th>Token 到期</th><th>请求数</th><th>操作</th></tr>
+      </thead>
       <tbody>
-        <template x-for="a in accounts" :key="a.id">
+        <template x-for="a in accountsWithState" :key="a.id">
           <tr>
-            <td class="font-mono text-xs text-slate-500" x-text="a.id"></td>
-            <td class="font-medium text-white" x-text="a.name"></td>
-            <td><span class="badge" :class="statusBadge(a.status)" x-text="a.status"></span></td>
-            <td class="font-mono text-xs text-slate-500" x-text="a.token"></td>
-            <td class="text-xs" x-text="a.rpm"></td>
-            <td class="text-xs" x-text="a.max_concur"></td>
-            <td class="text-xs text-slate-500" x-text="a.proxy_id||'—'"></td>
-            <td class="font-mono text-xs" x-text="a.total_reqs.toLocaleString()"></td>
-            <td class="flex gap-1">
-              <button @click="toggleAccount(a)" class="btn btn-ghost btn-sm" x-text="a.status==='active'?'Disable':'Enable'"></button>
-              <button @click="confirmDelete('account', a.id, a.name)" class="btn btn-danger btn-sm">Del</button>
+            <td>
+              <div class="font-medium text-gray-900 text-sm" x-text="a.name"></div>
+              <div class="text-[11px] text-gray-400 font-mono" x-text="'#'+a.id+' '+a.token"></div>
+            </td>
+            <td>
+              <div class="flex items-center gap-2">
+                <div class="toggle" :class="a.status==='active'?'on':'off'" @click="toggleAccount(a)"></div>
+                <span class="badge" :class="statusBadge(a.status)" x-text="statusText(a.status)"></span>
+              </div>
+            </td>
+            <td style="min-width:180px">
+              <div class="space-y-1.5">
+                <div>
+                  <div class="flex justify-between text-[11px] mb-0.5">
+                    <span class="text-gray-400">RPM</span>
+                    <span class="font-mono text-gray-600" x-text="(a._rpm_count||0)+' / '+a.rpm"></span>
+                  </div>
+                  <div class="progress-bar">
+                    <div class="progress-bar-fill" :class="(a._rpm_count||0)/a.rpm>0.8?'bg-red-500':(a._rpm_count||0)/a.rpm>0.5?'bg-amber-500':'bg-emerald-500'"
+                         :style="'width:'+Math.min(100,(a._rpm_count||0)/a.rpm*100)+'%'"></div>
+                  </div>
+                </div>
+                <div>
+                  <div class="flex justify-between text-[11px] mb-0.5">
+                    <span class="text-gray-400">并发</span>
+                    <span class="font-mono text-gray-600" x-text="(a._in_flight||0)+' / '+a.max_concur"></span>
+                  </div>
+                  <div class="progress-bar">
+                    <div class="progress-bar-fill" :class="(a._in_flight||0)/a.max_concur>0.8?'bg-red-500':(a._in_flight||0)/a.max_concur>0.5?'bg-amber-500':'bg-emerald-500'"
+                         :style="'width:'+Math.min(100,(a._in_flight||0)/a.max_concur*100)+'%'"></div>
+                  </div>
+                </div>
+              </div>
+            </td>
+            <td>
+              <template x-if="a.proxy_id">
+                <span class="badge badge-blue font-mono text-[11px]" x-text="'代理 #'+a.proxy_id"></span>
+              </template>
+              <template x-if="!a.proxy_id">
+                <span class="badge badge-red text-[11px]">无代理</span>
+              </template>
+            </td>
+            <td class="text-xs">
+              <template x-if="a.token_expiry===0"><span class="text-green-600 font-medium">永不过期</span></template>
+              <template x-if="a.token_expiry>0 && a.token_expiry>Date.now()/1000+7*86400"><span class="text-green-600" x-text="Math.floor((a.token_expiry-Date.now()/1000)/86400)+'天'"></span></template>
+              <template x-if="a.token_expiry>0 && a.token_expiry>Date.now()/1000 && a.token_expiry<=Date.now()/1000+7*86400"><span class="text-amber-600 font-medium" x-text="Math.floor((a.token_expiry-Date.now()/1000)/3600)+'小时'"></span></template>
+              <template x-if="a.token_expiry>0 && a.token_expiry<=Date.now()/1000"><span class="text-red-500 font-medium">已过期</span></template>
+            </td>
+            <td class="font-mono text-xs text-gray-600" x-text="(a.total_reqs||0).toLocaleString()"></td>
+            <td>
+              <button @click="confirmDelete('account', a.id, a.name)" class="btn btn-danger btn-sm">删除</button>
             </td>
           </tr>
         </template>
       </tbody>
     </table>
-    <div x-show="accounts.length===0" class="text-center py-12 text-slate-500 text-sm">No accounts configured. Add one to get started.</div>
+    <div x-show="accounts.length===0" class="text-center py-16 text-gray-400 text-sm">暂无账号，点击上方「添加账号」开始使用。</div>
   </div>
 </div>
 
-<!-- ===== Proxies ===== -->
+<!-- ===== 代理管理 ===== -->
 <div x-show="activeTab==='proxies'" class="p-6 fade-in">
   <div class="flex items-center justify-between mb-6">
-    <h2 class="text-lg font-semibold text-white">Proxy Pool</h2>
-    <button @click="showAddProxy=!showAddProxy" class="btn btn-primary btn-sm">+ Add Proxy</button>
+    <div>
+      <h2 class="text-xl font-bold text-gray-900">代理管理</h2>
+      <p class="text-sm text-gray-400 mt-0.5">管理代理池，用于账号轮换</p>
+    </div>
+    <button @click="showAddProxy=!showAddProxy" class="btn btn-primary btn-sm">+ 添加代理</button>
   </div>
 
-  <div x-show="showAddProxy" x-transition class="glass rounded-xl p-5 mb-6">
+  <div x-show="showAddProxy" x-transition class="card p-5 mb-6">
+    <h3 class="text-sm font-semibold text-gray-700 mb-3">添加代理</h3>
     <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
       <input x-model="newProxy.url" placeholder="socks5://user:pass@host:port" class="input md:col-span-2">
       <select x-model="newProxy.type" class="input">
@@ -268,88 +351,92 @@ tr:hover td { background: rgba(99,102,241,0.03); }
         <option value="http">HTTP</option>
       </select>
     </div>
-    <button @click="addProxy()" class="btn btn-success btn-sm">Add Single</button>
+    <button @click="addProxy()" class="btn btn-primary btn-sm">单个添加</button>
 
-    <div class="mt-4 border-t border-slate-700/30 pt-4">
-      <div class="text-xs text-slate-500 mb-2">Batch Add (one URL per line)</div>
-      <textarea x-model="batchProxies" rows="4" placeholder="socks5://host1:1080&#10;socks5://host2:1080&#10;..." class="input w-full font-mono text-xs"></textarea>
-      <button @click="addProxiesBatch()" class="btn btn-success btn-sm mt-2">Batch Add</button>
+    <div class="mt-4 border-t border-gray-100 pt-4">
+      <div class="text-xs text-gray-400 mb-2">批量添加（每行一个 URL）</div>
+      <textarea x-model="batchProxies" rows="4" placeholder="socks5://host1:1080&#10;socks5://host2:1080" class="input w-full font-mono text-xs"></textarea>
+      <button @click="addProxiesBatch()" class="btn btn-primary btn-sm mt-2">批量添加</button>
     </div>
   </div>
 
-  <div class="glass rounded-xl overflow-hidden">
+  <div class="card overflow-hidden">
     <table>
-      <thead><tr><th>ID</th><th>URL</th><th>Type</th><th>Bound Account</th><th>Status</th><th>Actions</th></tr></thead>
+      <thead><tr><th>ID</th><th>地址</th><th>类型</th><th>绑定账号</th><th>状态</th><th>操作</th></tr></thead>
       <tbody>
         <template x-for="p in proxies" :key="p.id">
           <tr>
-            <td class="font-mono text-xs text-slate-500" x-text="p.id"></td>
+            <td class="font-mono text-xs text-gray-400" x-text="p.id"></td>
             <td class="font-mono text-xs" x-text="p.url"></td>
             <td><span class="badge badge-blue" x-text="p.type"></span></td>
-            <td class="text-xs" x-text="p.account_id||'—'"></td>
-            <td><span class="badge" :class="p.status==='bound'?'badge-green':'badge-gray'" x-text="p.status"></span></td>
-            <td><button @click="confirmDelete('proxy', p.id, p.url)" class="btn btn-danger btn-sm">Del</button></td>
+            <td class="text-xs" x-text="p.account_id||'\u2014'"></td>
+            <td><span class="badge" :class="p.status==='bound'?'badge-green':'badge-gray'" x-text="p.status==='bound'?'已绑定':'空闲'"></span></td>
+            <td><button @click="confirmDelete('proxy', p.id, p.url)" class="btn btn-danger btn-sm">删除</button></td>
           </tr>
         </template>
       </tbody>
     </table>
-    <div x-show="proxies.length===0" class="text-center py-12 text-slate-500 text-sm">No proxies. Accounts will connect directly.</div>
+    <div x-show="proxies.length===0" class="text-center py-16 text-gray-400 text-sm">暂无代理，账号将直连（高风险）。</div>
   </div>
 </div>
 
-<!-- ===== API Keys ===== -->
+<!-- ===== API 密钥 ===== -->
 <div x-show="activeTab==='keys'" class="p-6 fade-in">
   <div class="flex items-center justify-between mb-6">
-    <h2 class="text-lg font-semibold text-white">Employee API Keys</h2>
-    <button @click="showAddKey=!showAddKey" class="btn btn-primary btn-sm">+ Generate Key</button>
-  </div>
-
-  <div x-show="showAddKey" x-transition class="glass rounded-xl p-5 mb-6">
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-      <input x-model="newKey.name" placeholder="Key Name (e.g. team-backend)" class="input">
-      <input x-model.number="newKey.daily_limit" placeholder="Daily Limit (default 1000)" type="number" class="input">
+    <div>
+      <h2 class="text-xl font-bold text-gray-900">API 密钥</h2>
+      <p class="text-sm text-gray-400 mt-0.5">生成和管理员工 API 密钥</p>
     </div>
-    <button @click="addKey()" class="btn btn-success mt-3">Generate</button>
+    <button @click="showAddKey=!showAddKey" class="btn btn-primary btn-sm">+ 生成密钥</button>
   </div>
 
-  <div x-show="generatedKey" x-transition class="glass glow-border rounded-xl p-4 mb-6">
+  <div x-show="showAddKey" x-transition class="card p-5 mb-6">
+    <h3 class="text-sm font-semibold text-gray-700 mb-3">新建密钥</h3>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <input x-model="newKey.name" placeholder="密钥名称（如 team-backend）" class="input">
+      <input x-model.number="newKey.daily_limit" placeholder="每日限额 (默认 1000)" type="number" class="input">
+    </div>
+    <button @click="addKey()" class="btn btn-primary mt-3 btn-sm">生成</button>
+  </div>
+
+  <div x-show="generatedKey" x-transition class="card border-green-200 bg-green-50 p-4 mb-6">
     <div class="flex items-center justify-between">
       <div>
-        <div class="text-xs text-slate-500 mb-1">New API Key Generated (copy now, shown once)</div>
-        <code class="text-green-400 font-mono text-sm" x-text="generatedKey"></code>
+        <div class="text-xs text-green-700 mb-1 font-medium">新密钥已生成（请立即复制，仅显示一次）</div>
+        <code class="text-green-800 font-mono text-sm font-bold" x-text="generatedKey"></code>
       </div>
-      <button @click="copyKey()" class="btn btn-ghost btn-sm">Copy</button>
+      <button @click="copyKey()" class="btn btn-ghost btn-sm">复制</button>
     </div>
   </div>
 
-  <div class="glass rounded-xl overflow-hidden">
+  <div class="card overflow-hidden">
     <table>
-      <thead><tr><th>ID</th><th>Name</th><th>Key</th><th>Daily Limit</th><th>Enabled</th><th>Requests</th><th>Actions</th></tr></thead>
+      <thead><tr><th>名称</th><th>密钥</th><th>每日限额</th><th>启用</th><th>请求数</th><th>操作</th></tr></thead>
       <tbody>
         <template x-for="k in keys" :key="k.id">
           <tr>
-            <td class="font-mono text-xs text-slate-500" x-text="k.id"></td>
-            <td class="font-medium text-white" x-text="k.name||'(unnamed)'"></td>
-            <td class="font-mono text-xs text-slate-400" x-text="k.key"></td>
-            <td class="text-xs" x-text="k.daily_limit.toLocaleString()"></td>
-            <td><span class="badge" :class="k.enabled?'badge-green':'badge-red'" x-text="k.enabled?'Yes':'No'"></span></td>
-            <td class="font-mono text-xs" x-text="k.total_reqs.toLocaleString()"></td>
-            <td class="flex gap-1">
-              <button @click="toggleKey(k)" class="btn btn-ghost btn-sm" x-text="k.enabled?'Disable':'Enable'"></button>
-              <button @click="confirmDelete('key', k.id, k.name||k.key)" class="btn btn-danger btn-sm">Del</button>
+            <td>
+              <div class="font-medium text-gray-900 text-sm" x-text="k.name||'(未命名)'"></div>
+              <div class="text-[11px] text-gray-400 font-mono" x-text="'#'+k.id"></div>
             </td>
+            <td class="font-mono text-xs text-gray-500" x-text="k.key"></td>
+            <td class="text-xs" x-text="k.daily_limit.toLocaleString()"></td>
+            <td>
+              <div class="toggle" :class="k.enabled?'on':'off'" @click="toggleKey(k)"></div>
+            </td>
+            <td class="font-mono text-xs text-gray-600" x-text="k.total_reqs.toLocaleString()"></td>
+            <td><button @click="confirmDelete('key', k.id, k.name||k.key)" class="btn btn-danger btn-sm">删除</button></td>
           </tr>
         </template>
       </tbody>
     </table>
-    <div x-show="keys.length===0" class="text-center py-12 text-slate-500 text-sm">No API keys. Generate one for your team.</div>
+    <div x-show="keys.length===0" class="text-center py-16 text-gray-400 text-sm">暂无密钥，点击上方「生成密钥」为团队分配。</div>
   </div>
 
-  <!-- Key usage stats -->
-  <div x-show="keyStatsData.length>0" class="glass rounded-xl p-5 mt-6">
-    <h3 class="text-sm font-semibold text-slate-300 mb-4">Key Usage (30 days)</h3>
+  <div x-show="keyStatsData.length>0" class="card p-5 mt-6">
+    <h3 class="text-sm font-semibold text-gray-700 mb-4">密钥用量 (30天)</h3>
     <table>
-      <thead><tr><th>Key Name</th><th>Requests</th><th>Avg Latency</th></tr></thead>
+      <thead><tr><th>密钥名称</th><th>请求数</th><th>平均延迟</th></tr></thead>
       <tbody>
         <template x-for="s in keyStatsData" :key="s.key_id">
           <tr>
@@ -363,98 +450,141 @@ tr:hover td { background: rgba(99,102,241,0.03); }
   </div>
 </div>
 
-<!-- ===== Live Pool ===== -->
+<!-- ===== 实时状态 ===== -->
 <div x-show="activeTab==='pool'" class="p-6 fade-in">
   <div class="flex items-center justify-between mb-6">
-    <h2 class="text-lg font-semibold text-white">Live Pool Status</h2>
+    <div>
+      <h2 class="text-xl font-bold text-gray-900">实时状态</h2>
+      <p class="text-sm text-gray-400 mt-0.5">账号池实时运行状态</p>
+    </div>
     <div class="flex items-center gap-3">
-      <span class="text-xs text-slate-500">Auto-refresh 5s</span>
-      <button @click="api('POST','/ops/reload')" class="btn btn-ghost btn-sm">Force Reload</button>
+      <span class="text-xs text-gray-400">每 5 秒自动刷新</span>
+      <button @click="api('POST','/ops/reload').then(()=>{loadPoolStatus();toast('刷新成功','success')})" class="btn btn-ghost btn-sm">强制刷新</button>
     </div>
   </div>
 
   <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
     <template x-for="s in poolStates" :key="s.id">
-      <div class="glass rounded-xl p-5 transition-all hover:border-indigo-500/30">
+      <div class="card p-5 hover:shadow-md transition-all">
         <div class="flex items-center justify-between mb-4">
           <div>
-            <div class="font-semibold text-white text-sm" x-text="s.name"></div>
-            <div class="text-xs text-slate-500 font-mono" x-text="'ID: '+s.id"></div>
+            <div class="font-semibold text-gray-900 text-sm" x-text="s.name"></div>
+            <div class="text-[11px] text-gray-400 font-mono" x-text="'ID: '+s.id"></div>
           </div>
-          <span class="badge" :class="statusBadge(s.status)" x-text="s.status"></span>
+          <span class="badge" :class="statusBadge(s.status)" x-text="statusText(s.status)"></span>
         </div>
 
-        <!-- Concurrency bar -->
         <div class="mb-3">
-          <div class="flex justify-between text-xs mb-1">
-            <span class="text-slate-400">Concurrency</span>
-            <span class="font-mono" :class="s.in_flight>=s.max_concur?'text-red-400':'text-slate-300'" x-text="s.in_flight+'/'+s.max_concur"></span>
+          <div class="flex justify-between text-[11px] mb-1">
+            <span class="text-gray-400">并发</span>
+            <span class="font-mono" :class="s.in_flight>=s.max_concur?'text-red-500':'text-gray-600'" x-text="s.in_flight+'/'+s.max_concur"></span>
           </div>
-          <div class="h-2 bg-slate-700/50 rounded-full overflow-hidden">
-            <div class="h-full rounded-full transition-all duration-500"
-                 :class="s.in_flight/s.max_concur>0.8?'bg-red-500':s.in_flight/s.max_concur>0.5?'bg-yellow-500':'bg-green-500'"
+          <div class="progress-bar">
+            <div class="progress-bar-fill"
+                 :class="s.in_flight/s.max_concur>0.8?'bg-red-500':s.in_flight/s.max_concur>0.5?'bg-amber-500':'bg-emerald-500'"
                  :style="'width:'+Math.min(100, s.in_flight/s.max_concur*100)+'%'"></div>
           </div>
         </div>
 
-        <!-- RPM bar -->
-        <div class="mb-3">
-          <div class="flex justify-between text-xs mb-1">
-            <span class="text-slate-400">RPM</span>
-            <span class="font-mono text-slate-300" x-text="s.rpm_count+'/'+s.rpm_limit"></span>
+        <div class="mb-4">
+          <div class="flex justify-between text-[11px] mb-1">
+            <span class="text-gray-400">RPM</span>
+            <span class="font-mono text-gray-600" x-text="s.rpm_count+'/'+s.rpm_limit"></span>
           </div>
-          <div class="h-2 bg-slate-700/50 rounded-full overflow-hidden">
-            <div class="h-full bg-indigo-500 rounded-full transition-all duration-500"
+          <div class="progress-bar">
+            <div class="progress-bar-fill bg-blue-500"
                  :style="'width:'+Math.min(100, s.rpm_count/s.rpm_limit*100)+'%'"></div>
           </div>
         </div>
 
-        <div class="grid grid-cols-2 gap-2 text-xs">
-          <div class="text-slate-500">Proxy</div>
-          <div class="font-mono text-slate-300 truncate" x-text="s.proxy_url||'direct'" :title="s.proxy_url"></div>
-          <div class="text-slate-500">Cooldown</div>
-          <div class="font-mono" :class="s.cool_remaining_s>0?'text-yellow-400':'text-slate-500'" x-text="s.cool_remaining_s>0?s.cool_remaining_s+'s':'—'"></div>
-          <div class="text-slate-500">Total Reqs</div>
-          <div class="font-mono text-slate-300" x-text="(s.total_reqs||0).toLocaleString()"></div>
+        <div class="grid grid-cols-2 gap-y-2 text-xs border-t border-gray-100 pt-3">
+          <div class="text-gray-400">代理</div>
+          <div class="font-mono truncate" :class="s.proxy_url?'text-gray-600':'text-red-500'" x-text="s.proxy_url||'直连（高风险）'" :title="s.proxy_url"></div>
+          <div class="text-gray-400">冷却</div>
+          <div class="font-mono" :class="s.cool_remaining_s>0?'text-amber-500':'text-gray-300'" x-text="s.cool_remaining_s>0?s.cool_remaining_s+'秒':'\u2014'"></div>
+          <div class="text-gray-400">总请求</div>
+          <div class="font-mono text-gray-600" x-text="(s.total_reqs||0).toLocaleString()"></div>
         </div>
       </div>
     </template>
   </div>
-  <div x-show="poolStates.length===0" class="glass rounded-xl text-center py-16 text-slate-500 text-sm">No accounts in pool. Add accounts to see live status.</div>
+  <div x-show="poolStates.length===0" class="card text-center py-16 text-gray-400 text-sm">账号池为空，请先添加账号。</div>
 </div>
 
-</main>
+<!-- ===== 系统设置 ===== -->
+<div x-show="activeTab==='settings'" class="p-6 fade-in">
+  <div class="mb-6">
+    <h2 class="text-xl font-bold text-gray-900">系统设置</h2>
+    <p class="text-sm text-gray-400 mt-0.5">管理后台密码修改</p>
+  </div>
 
-<!-- Delete Confirmation Modal -->
-<div x-show="deleteModal.show" x-transition.opacity class="fixed inset-0 z-40 bg-black/60 flex items-center justify-center" @click.self="deleteModal.show=false">
-  <div class="glass rounded-xl p-6 w-96" x-transition>
-    <h3 class="text-white font-semibold mb-2">Confirm Delete</h3>
-    <p class="text-sm text-slate-400 mb-4">Delete <span class="text-white font-medium" x-text="deleteModal.name"></span>? This cannot be undone.</p>
-    <div class="flex justify-end gap-2">
-      <button @click="deleteModal.show=false" class="btn btn-ghost">Cancel</button>
-      <button @click="executeDelete()" class="btn btn-danger">Delete</button>
+  <div class="card p-6 max-w-lg">
+    <h3 class="text-sm font-semibold text-gray-700 mb-4">修改管理员密码</h3>
+    <div x-show="pwMsg" class="rounded-lg px-3 py-2 mb-4 text-sm"
+         :class="pwMsgType==='success'?'bg-green-50 border border-green-200 text-green-700':'bg-red-50 border border-red-200 text-red-600'"
+         x-text="pwMsg"></div>
+    <div class="space-y-3">
+      <div>
+        <label class="block text-xs font-medium text-gray-500 mb-1">当前密码</label>
+        <input x-model="pwForm.old" type="password" placeholder="请输入当前密码" class="input w-full">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-500 mb-1">新密码</label>
+        <input x-model="pwForm.new1" type="password" placeholder="请输入新密码（至少 6 位）" class="input w-full">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-gray-500 mb-1">确认新密码</label>
+        <input x-model="pwForm.new2" type="password" placeholder="再次输入新密码" class="input w-full"
+               @keydown.enter="changePassword()">
+      </div>
+      <button @click="changePassword()" class="btn btn-primary">保存密码</button>
     </div>
   </div>
 </div>
 
+</main>
+
+<!-- 删除确认弹窗 -->
+<div x-show="deleteModal.show" x-transition.opacity class="fixed inset-0 z-40 bg-black/30 flex items-center justify-center" @click.self="deleteModal.show=false">
+  <div class="card p-6 w-96 shadow-xl" x-transition>
+    <h3 class="text-gray-900 font-bold mb-2">确认删除</h3>
+    <p class="text-sm text-gray-500 mb-4">确定要删除 <span class="text-gray-900 font-semibold" x-text="deleteModal.name"></span> 吗？此操作不可撤销。</p>
+    <div class="flex justify-end gap-2">
+      <button @click="deleteModal.show=false" class="btn btn-ghost btn-sm">取消</button>
+      <button @click="executeDelete()" class="btn btn-danger btn-sm">删除</button>
+    </div>
+  </div>
 </div>
 
+</div><!-- end main app -->
+</div><!-- end x-data -->
+
 <script>
+const DEFAULT_PASSWORD = 'admin281100';
+const STORAGE_KEY_PW = 'gw_admin_password';
+const STORAGE_KEY_LOGGED = 'gw_logged_in';
+
 function gateway() {
   return {
+    // ---- Auth ----
+    loggedIn: false,
+    loginPassword: '',
+    loginError: '',
+
+    // ---- Data ----
     adminKey: '',
     connected: false,
     activeTab: 'dashboard',
     toasts: [],
     tabs: [
-      { id:'dashboard', label:'Dashboard', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>' },
-      { id:'accounts', label:'Accounts', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>' },
-      { id:'proxies', label:'Proxies', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>' },
-      { id:'keys', label:'API Keys', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>' },
-      { id:'pool', label:'Live Pool', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>' },
+      { id:'dashboard', label:'仪表盘', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>' },
+      { id:'accounts', label:'账号管理', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>' },
+      { id:'proxies', label:'代理管理', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>' },
+      { id:'keys', label:'API 密钥', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>' },
+      { id:'pool', label:'实时状态', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>' },
+      { id:'settings', label:'系统设置', icon:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>' },
     ],
 
-    // Data
     overview: {},
     accounts: [],
     proxies: [],
@@ -466,27 +596,89 @@ function gateway() {
     dailyData: [],
     hourlyData: [],
 
-    // UI state
     showAddAccount: false,
     showAddProxy: false,
     showAddKey: false,
     generatedKey: '',
     deleteModal: { show:false, type:'', id:0, name:'' },
-    newAccount: { name:'', token:'', fingerprint:'', rpm:60, max_concur:5 },
+    newAccount: { name:'', token:'', fingerprint:'', refresh_token:'', rpm:20, max_concur:5 },
     newProxy: { url:'', type:'socks5' },
     newKey: { name:'', daily_limit:1000 },
     batchProxies: '',
 
-    // Charts
+    // Password change
+    pwForm: { old:'', new1:'', new2:'' },
+    pwMsg: '',
+    pwMsgType: '',
+
     chartDaily: null,
     chartHourly: null,
     pollTimer: null,
 
-    init() {
+    get accountsWithState() {
+      const stateMap = {};
+      for (const s of this.poolStates) { stateMap[s.id] = s; }
+      return this.accounts.map(a => ({
+        ...a,
+        _rpm_count: stateMap[a.id]?.rpm_count || 0,
+        _in_flight: stateMap[a.id]?.in_flight || 0,
+        _cool_remaining_s: stateMap[a.id]?.cool_remaining_s || 0,
+      }));
+    },
+
+    // ---- Password helpers ----
+    getSavedPassword() {
+      return localStorage.getItem(STORAGE_KEY_PW) || DEFAULT_PASSWORD;
+    },
+
+    doLogin() {
+      this.loginError = '';
+      if (!this.loginPassword) {
+        this.loginError = '请输入密码';
+        return;
+      }
+      if (this.loginPassword !== this.getSavedPassword()) {
+        this.loginError = '密码错误，请重试';
+        this.loginPassword = '';
+        return;
+      }
+      this.loggedIn = true;
+      sessionStorage.setItem(STORAGE_KEY_LOGGED, '1');
+      this.loginPassword = '';
+      // auto-connect if admin key exists
       this.adminKey = localStorage.getItem('gw_admin_key') || '';
       if (this.adminKey) this.connect();
     },
 
+    doLogout() {
+      this.loggedIn = false;
+      this.connected = false;
+      sessionStorage.removeItem(STORAGE_KEY_LOGGED);
+      if (this.pollTimer) { clearInterval(this.pollTimer); this.pollTimer = null; }
+    },
+
+    changePassword() {
+      this.pwMsg = '';
+      if (!this.pwForm.old) { this.pwMsg = '请输入当前密码'; this.pwMsgType = 'error'; return; }
+      if (this.pwForm.old !== this.getSavedPassword()) { this.pwMsg = '当前密码错误'; this.pwMsgType = 'error'; return; }
+      if (!this.pwForm.new1 || this.pwForm.new1.length < 6) { this.pwMsg = '新密码长度不能少于 6 位'; this.pwMsgType = 'error'; return; }
+      if (this.pwForm.new1 !== this.pwForm.new2) { this.pwMsg = '两次输入的新密码不一致'; this.pwMsgType = 'error'; return; }
+      localStorage.setItem(STORAGE_KEY_PW, this.pwForm.new1);
+      this.pwForm = { old:'', new1:'', new2:'' };
+      this.pwMsg = '密码修改成功';
+      this.pwMsgType = 'success';
+    },
+
+    init() {
+      // Check session
+      if (sessionStorage.getItem(STORAGE_KEY_LOGGED) === '1') {
+        this.loggedIn = true;
+        this.adminKey = localStorage.getItem('gw_admin_key') || '';
+        if (this.adminKey) this.connect();
+      }
+    },
+
+    // ---- API ----
     headers() {
       return { 'Content-Type':'application/json', 'Authorization':'Bearer '+this.adminKey };
     },
@@ -496,7 +688,7 @@ function gateway() {
       if (body) opts.body = JSON.stringify(body);
       const res = await fetch('/admin'+path, opts);
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || data.error || 'Request failed');
+      if (!res.ok) throw new Error(data.message || data.error || '请求失败');
       return data;
     },
 
@@ -505,18 +697,18 @@ function gateway() {
       try {
         await this.loadAll();
         this.connected = true;
-        this.toast('Connected successfully', 'success');
+        this.toast('连接成功', 'success');
         this.startPolling();
       } catch(e) {
         this.connected = false;
-        this.toast('Connection failed: '+e.message, 'error');
+        this.toast('连接失败: '+e.message, 'error');
       }
     },
 
     startPolling() {
       if (this.pollTimer) clearInterval(this.pollTimer);
       this.pollTimer = setInterval(() => {
-        if (this.activeTab === 'pool') this.loadPoolStatus();
+        if (this.activeTab === 'pool' || this.activeTab === 'accounts') this.loadPoolStatus();
         if (this.activeTab === 'dashboard') this.loadDashboard();
       }, 5000);
     },
@@ -524,7 +716,7 @@ function gateway() {
     switchTab(id) {
       this.activeTab = id;
       if (id === 'dashboard') this.loadDashboard();
-      if (id === 'accounts') this.loadAccounts();
+      if (id === 'accounts') { this.loadAccounts(); this.loadPoolStatus(); }
       if (id === 'proxies') this.loadProxies();
       if (id === 'keys') { this.loadKeys(); this.loadKeyStats(); }
       if (id === 'pool') this.loadPoolStatus();
@@ -566,10 +758,9 @@ function gateway() {
     async loadKeyStats() { try { this.keyStatsData = await this.api('GET','/stats/keys?days=30'); } catch(e){} },
 
     renderCharts() {
-      const gridColor = 'rgba(71,85,105,0.2)';
-      const tickColor = '#64748b';
+      const gridColor = 'rgba(0,0,0,0.04)';
+      const tickColor = '#94a3b8';
 
-      // Daily chart
       const dailyCtx = document.getElementById('chartDaily');
       if (dailyCtx) {
         if (this.chartDaily) this.chartDaily.destroy();
@@ -578,16 +769,16 @@ function gateway() {
           data: {
             labels: this.dailyData.map(d => d.date?.substr(5)||''),
             datasets: [{
-              label: 'Requests',
+              label: '请求数',
               data: this.dailyData.map(d => d.requests),
-              borderColor: '#6366f1',
-              backgroundColor: 'rgba(99,102,241,0.08)',
+              borderColor: '#10b981',
+              backgroundColor: 'rgba(16,185,129,0.06)',
               fill: true, tension: 0.4, pointRadius: 0, borderWidth: 2,
             },{
-              label: 'Errors',
+              label: '错误数',
               data: this.dailyData.map(d => d.error_count),
               borderColor: '#ef4444',
-              backgroundColor: 'rgba(239,68,68,0.05)',
+              backgroundColor: 'rgba(239,68,68,0.04)',
               fill: true, tension: 0.4, pointRadius: 0, borderWidth: 1.5,
             }]
           },
@@ -596,7 +787,6 @@ function gateway() {
         });
       }
 
-      // Hourly chart
       const hourlyCtx = document.getElementById('chartHourly');
       if (hourlyCtx) {
         if (this.chartHourly) this.chartHourly.destroy();
@@ -605,10 +795,10 @@ function gateway() {
           data: {
             labels: this.hourlyData.map(d => d.hour?.substr(11,5)||''),
             datasets: [{
-              label: 'Requests',
+              label: '请求数',
               data: this.hourlyData.map(d => d.requests),
-              backgroundColor: 'rgba(99,102,241,0.4)',
-              borderColor: '#6366f1', borderWidth: 1, borderRadius: 3,
+              backgroundColor: 'rgba(16,185,129,0.3)',
+              borderColor: '#10b981', borderWidth: 1, borderRadius: 3,
             }]
           },
           options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{display:false} },
@@ -617,14 +807,14 @@ function gateway() {
       }
     },
 
-    // CRUD operations
+    // ---- CRUD ----
     async addAccount() {
       try {
         await this.api('POST','/accounts', this.newAccount);
-        this.newAccount = { name:'', token:'', fingerprint:'', rpm:60, max_concur:5 };
+        this.newAccount = { name:'', token:'', fingerprint:'', refresh_token:'', rpm:20, max_concur:5 };
         this.showAddAccount = false;
         await this.loadAccounts();
-        this.toast('Account added', 'success');
+        this.toast('账号添加成功', 'success');
       } catch(e) { this.toast(e.message,'error'); }
     },
 
@@ -641,7 +831,7 @@ function gateway() {
         await this.api('POST','/proxies', this.newProxy);
         this.newProxy = {url:'',type:'socks5'};
         await this.loadProxies();
-        this.toast('Proxy added','success');
+        this.toast('代理添加成功','success');
       } catch(e) { this.toast(e.message,'error'); }
     },
 
@@ -650,7 +840,7 @@ function gateway() {
         const res = await this.api('POST','/proxies/batch', {urls:this.batchProxies, type:'socks5'});
         this.batchProxies = '';
         await this.loadProxies();
-        this.toast(res.created+' proxies added','success');
+        this.toast('已添加 '+res.created+' 个代理','success');
       } catch(e) { this.toast(e.message,'error'); }
     },
 
@@ -661,7 +851,7 @@ function gateway() {
         this.newKey = {name:'',daily_limit:1000};
         this.showAddKey = false;
         await this.loadKeys();
-        this.toast('Key generated','success');
+        this.toast('密钥生成成功','success');
       } catch(e) { this.toast(e.message,'error'); }
     },
 
@@ -674,7 +864,7 @@ function gateway() {
 
     copyKey() {
       navigator.clipboard.writeText(this.generatedKey);
-      this.toast('Copied to clipboard','success');
+      this.toast('已复制到剪贴板','success');
     },
 
     confirmDelete(type, id, name) {
@@ -690,13 +880,16 @@ function gateway() {
         if (type==='account') await this.loadAccounts();
         if (type==='proxy') await this.loadProxies();
         if (type==='key') await this.loadKeys();
-        this.toast('Deleted successfully','success');
+        this.toast('删除成功','success');
       } catch(e) { this.toast(e.message,'error'); }
     },
 
-    // Helpers
+    // ---- Helpers ----
     statusBadge(s) {
       return { active:'badge-green', disabled:'badge-red', refreshing:'badge-yellow', cooldown:'badge-yellow' }[s] || 'badge-gray';
+    },
+    statusText(s) {
+      return { active:'正常', disabled:'已禁用', refreshing:'刷新中', cooldown:'冷却中' }[s] || s;
     },
     shortModel(m) { return (m||'unknown').replace('claude-','').replace('-20250514','').replace('-20241022',''); },
     toast(msg, type='info') {

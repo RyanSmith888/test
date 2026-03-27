@@ -102,7 +102,7 @@ func LoadConfig() (*Config, error) {
 		PoolReloadInterval:   getEnvDuration("POOL_RELOAD_INTERVAL", 2*time.Minute),
 		RPMResetInterval:     getEnvDuration("RPM_RESET_INTERVAL", 60*time.Second),
 		TokenRefreshLeadTime: getEnvDuration("TOKEN_REFRESH_LEAD", 30*time.Minute),
-		DefaultRPM:           getEnvInt("DEFAULT_RPM", 60),
+		DefaultRPM:           getEnvInt("DEFAULT_RPM", 20),
 		DefaultMaxConcur:     getEnvInt("DEFAULT_MAX_CONCUR", 5),
 		MaxRetryAttempts:     getEnvInt("MAX_RETRY_ATTEMPTS", 3),
 

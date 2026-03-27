@@ -9,7 +9,7 @@ func TestStore_AccountCRUD(t *testing.T) {
 	store, _ := setupTestStore(t)
 
 	// Create
-	id, err := store.CreateAccount("test-acct", "tok-123", "fp-abc", 30, 3, 0)
+	id, err := store.CreateAccount("test-acct", "tok-123", "fp-abc", "", 30, 3, 0)
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestStore_ProxyCRUD(t *testing.T) {
 func TestStore_ProxyBinding(t *testing.T) {
 	store, _ := setupTestStore(t)
 
-	accID, _ := store.CreateAccount("acct", "tok", "", 60, 5, 0)
+	accID, _ := store.CreateAccount("acct", "tok", "", "", 60, 5, 0)
 	proxyID, _ := store.CreateProxy("socks5://bind:1080", "socks5")
 
 	// Bind
@@ -172,7 +172,7 @@ func TestStore_ProxyBinding(t *testing.T) {
 func TestStore_AsyncLogWriter(t *testing.T) {
 	store, _ := setupTestStore(t)
 
-	accID, _ := store.CreateAccount("acct", "tok", "", 60, 5, 0)
+	accID, _ := store.CreateAccount("acct", "tok", "", "", 60, 5, 0)
 	keyID, _ := store.CreateAPIKey("sk-test", "test", 1000)
 
 	// Push multiple logs
@@ -226,9 +226,9 @@ func TestStore_DailyUsage(t *testing.T) {
 func TestStore_OverviewStats(t *testing.T) {
 	store, _ := setupTestStore(t)
 
-	store.CreateAccount("a1", "t", "", 60, 5, 0)
-	store.CreateAccount("a2", "t", "", 60, 5, 0)
-	id3, _ := store.CreateAccount("a3", "t", "", 60, 5, 0)
+	store.CreateAccount("a1", "t", "", "", 60, 5, 0)
+	store.CreateAccount("a2", "t", "", "", 60, 5, 0)
+	id3, _ := store.CreateAccount("a3", "t", "", "", 60, 5, 0)
 	store.UpdateAccountStatus(id3, "disabled")
 	store.CreateAPIKey("sk-1", "k1", 1000)
 	store.CreateProxy("socks5://p:1080", "socks5")
@@ -251,7 +251,7 @@ func TestStore_OverviewStats(t *testing.T) {
 func TestStore_DeleteAccountUnbindsProxy(t *testing.T) {
 	store, _ := setupTestStore(t)
 
-	accID, _ := store.CreateAccount("acct", "tok", "", 60, 5, 0)
+	accID, _ := store.CreateAccount("acct", "tok", "", "", 60, 5, 0)
 	proxyID, _ := store.CreateProxy("socks5://x:1080", "socks5")
 	store.BindProxy(accID, proxyID)
 

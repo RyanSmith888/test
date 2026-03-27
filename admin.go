@@ -101,12 +101,13 @@ func (ah *AdminHandler) listAccounts(w http.ResponseWriter, r *http.Request) {
 
 func (ah *AdminHandler) createAccount(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Name        string `json:"name"`
-		Token       string `json:"token"`
-		Fingerprint string `json:"fingerprint"`
-		RPM         int    `json:"rpm"`
-		MaxConcur   int    `json:"max_concur"`
-		TokenExpiry int64  `json:"token_expiry"`
+		Name         string `json:"name"`
+		Token        string `json:"token"`
+		Fingerprint  string `json:"fingerprint"`
+		RefreshToken string `json:"refresh_token"`
+		RPM          int    `json:"rpm"`
+		MaxConcur    int    `json:"max_concur"`
+		TokenExpiry  int64  `json:"token_expiry"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, 400, "invalid json body")
@@ -123,7 +124,7 @@ func (ah *AdminHandler) createAccount(w http.ResponseWriter, r *http.Request) {
 		req.MaxConcur = ah.cfg.DefaultMaxConcur
 	}
 
-	id, err := ah.store.CreateAccount(req.Name, req.Token, req.Fingerprint, req.RPM, req.MaxConcur, req.TokenExpiry)
+	id, err := ah.store.CreateAccount(req.Name, req.Token, req.Fingerprint, req.RefreshToken, req.RPM, req.MaxConcur, req.TokenExpiry)
 	if err != nil {
 		writeError(w, 500, err.Error())
 		return

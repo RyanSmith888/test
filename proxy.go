@@ -170,6 +170,11 @@ func (ph *ProxyHandler) doUpstreamRequest(
 	// Set account authorization
 	upReq.Header.Set("Authorization", "Bearer "+as.Account.Token)
 
+	// 如果账号有录入指纹（原始设备 User-Agent），用它覆盖 UA
+	if as.Account.Fingerprint != "" {
+		upReq.Header.Set("User-Agent", as.Account.Fingerprint)
+	}
+
 	// Get or create transport for this proxy
 	transport := ph.getTransport(as.ProxyURL)
 
@@ -295,15 +300,35 @@ func (ph *ProxyHandler) getTransport(proxyURL string) http.RoundTripper {
 			DisableCompression:  false,
 		}
 	} else {
-		transport = &http.Transport{
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				return dialViaSocks5(proxyURL, addr)
-			},
-			MaxIdleConns:        100,
-			MaxIdleConnsPerHost: 20,
-			IdleConnTimeout:     90 * time.Second,
-			TLSHandshakeTimeout: 15 * time.Second,
-			ForceAttemptHTTP2:   true,
+		u, err := url.Parse(proxyURL)
+		if err != nil {
+			logWarn("invalid proxy URL %q, using direct", proxyURL)
+			return ph.getTransport("") // fallback 直连
+		}
+
+		switch u.Scheme {
+		case "socks5", "socks5h":
+			transport = &http.Transport{
+				DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+					return dialViaSocks5(proxyURL, addr)
+				},
+				MaxIdleConns:        100,
+				MaxIdleConnsPerHost: 20,
+				IdleConnTimeout:     90 * time.Second,
+				TLSHandshakeTimeout: 15 * time.Second,
+			}
+		case "http", "https":
+			transport = &http.Transport{
+				Proxy:               http.ProxyURL(u),
+				MaxIdleConns:        100,
+				MaxIdleConnsPerHost: 20,
+				IdleConnTimeout:     90 * time.Second,
+				TLSHandshakeTimeout: 15 * time.Second,
+				ForceAttemptHTTP2:   false, // HTTP 代理不支持 H2
+			}
+		default:
+			logWarn("unsupported proxy scheme %q, using direct", u.Scheme)
+			return ph.getTransport("")
 		}
 	}
 

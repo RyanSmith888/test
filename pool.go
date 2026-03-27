@@ -1,7 +1,13 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -62,9 +68,9 @@ func (p *Pool) Start() error {
 		return err
 	}
 
-	p.wg.Add(2)
+	p.wg.Add(1)
 	go p.backgroundLoop()
-	go p.rpmResetLoop()
+	go p.startPerAccountRPMReset()
 
 	logInfo("pool started with %d accounts", len(p.accounts))
 	return nil
@@ -113,6 +119,7 @@ func (p *Pool) Reload() error {
 				ProxyURL: proxyMap[a.ID],
 			}
 			newStates = append(newStates, as)
+			go p.rpmResetForAccount(as) // 新账号立即启动独立 reset
 		}
 	}
 
@@ -248,6 +255,8 @@ func (p *Pool) findByID(id int64) *AccountState {
 func (p *Pool) tryBindProxy(as *AccountState) {
 	proxy, err := p.store.GetIdleProxy()
 	if err != nil {
+		logWarn("account %d [%s] has no proxy bound and proxy pool is empty — using direct connection (high ban risk)",
+			as.Account.ID, as.Account.Name)
 		return
 	}
 	if err := p.store.BindProxy(as.Account.ID, proxy.ID); err != nil {
@@ -290,31 +299,111 @@ func (p *Pool) checkTokenExpiry() {
 			continue
 		}
 		remaining := as.Account.TokenExpiry - now
-		if remaining > 0 && remaining < leadSec {
-			logWarn("account %d [%s] token expires in %ds, marking refreshing",
-				as.Account.ID, as.Account.Name, remaining)
-			p.store.UpdateAccountStatus(as.Account.ID, "refreshing")
+		if remaining > 0 && remaining < leadSec && as.Account.RefreshToken != "" {
+			go p.doTokenRefresh(as) // 异步刷新，不阻塞
 		}
 	}
 }
 
-func (p *Pool) rpmResetLoop() {
-	defer p.wg.Done()
-	ticker := time.NewTicker(p.cfg.RPMResetInterval)
-	defer ticker.Stop()
+func (p *Pool) doTokenRefresh(as *AccountState) {
+	logInfo("refreshing token for account %d [%s]", as.Account.ID, as.Account.Name)
 
+	newToken, newExpiry, err := callOAuthRefresh(as.Account.RefreshToken)
+	if err != nil {
+		logWarn("token refresh failed for account %d: %v, cooling down 2m", as.Account.ID, err)
+		as.setCooldown(2 * time.Minute)
+		return
+	}
+
+	// 更新内存
+	as.mu.Lock()
+	as.Account.Token = newToken
+	as.Account.TokenExpiry = newExpiry
+	as.mu.Unlock()
+
+	// 更新数据库
+	p.store.UpdateAccountToken(as.Account.ID, newToken, newExpiry)
+	logInfo("token refreshed for account %d, new expiry in %ds",
+		as.Account.ID, newExpiry-time.Now().Unix())
+}
+
+func callOAuthRefresh(refreshToken string) (accessToken string, expiresAt int64, err error) {
+	if refreshToken == "" {
+		return "", 0, fmt.Errorf("no refresh token")
+	}
+
+	body, _ := json.Marshal(map[string]string{
+		"grant_type":    "refresh_token",
+		"refresh_token": refreshToken,
+	})
+
+	req, err := http.NewRequest("POST", "https://claude.ai/api/auth/oauth/token",
+		bytes.NewReader(body))
+	if err != nil {
+		return "", 0, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", "Claude-Code/1.0")
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", 0, err
+	}
+	defer resp.Body.Close()
+
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return "", 0, fmt.Errorf("oauth refresh %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+
+	var result struct {
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int    `json:"expires_in"`
+	}
+	if err := json.Unmarshal(raw, &result); err != nil || result.AccessToken == "" {
+		return "", 0, fmt.Errorf("parse oauth response: %w", err)
+	}
+
+	expiry := time.Now().Add(time.Duration(result.ExpiresIn) * time.Second).Unix()
+	return result.AccessToken, expiry, nil
+}
+
+func (p *Pool) startPerAccountRPMReset() {
+	p.mu.RLock()
+	accounts := make([]*AccountState, len(p.accounts))
+	copy(accounts, p.accounts)
+	p.mu.RUnlock()
+
+	for _, as := range accounts {
+		go p.rpmResetForAccount(as)
+	}
+}
+
+func (p *Pool) rpmResetForAccount(as *AccountState) {
+	// 用账号ID哈希计算 0-59 秒的启动偏移，保证每个账号错开
+	offset := time.Duration(fnv64(uint64(as.Account.ID))%60) * time.Second
+	time.Sleep(offset)
+
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-p.stopCh:
 			return
 		case <-ticker.C:
-			p.mu.RLock()
-			for _, as := range p.accounts {
-				as.RPMCount.Store(0)
-			}
-			p.mu.RUnlock()
+			as.RPMCount.Store(0)
 		}
 	}
+}
+
+func fnv64(v uint64) uint64 {
+	h := uint64(14695981039346656037)
+	for i := 0; i < 8; i++ {
+		h ^= (v >> (i * 8)) & 0xff
+		h *= 1099511628211
+	}
+	return h
 }
 
 // GetStates returns a snapshot for the admin dashboard.

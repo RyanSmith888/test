@@ -43,9 +43,9 @@ func setupTestStore(t *testing.T) (*Store, *Config) {
 func TestPoolScheduling_LeastLoaded(t *testing.T) {
 	store, cfg := setupTestStore(t)
 
-	store.CreateAccount("acc1", "tok1", "", 60, 5, 0)
-	store.CreateAccount("acc2", "tok2", "", 60, 5, 0)
-	store.CreateAccount("acc3", "tok3", "", 60, 5, 0)
+	store.CreateAccount("acc1", "tok1", "", "", 60, 5, 0)
+	store.CreateAccount("acc2", "tok2", "", "", 60, 5, 0)
+	store.CreateAccount("acc3", "tok3", "", "", 60, 5, 0)
 
 	pool := NewPool(store, cfg)
 	if err := pool.Start(); err != nil {
@@ -78,8 +78,8 @@ func TestPoolScheduling_LeastLoaded(t *testing.T) {
 func TestPoolScheduling_CooldownSkip(t *testing.T) {
 	store, cfg := setupTestStore(t)
 
-	store.CreateAccount("hot", "tok1", "", 60, 5, 0)
-	store.CreateAccount("cold", "tok2", "", 60, 5, 0)
+	store.CreateAccount("hot", "tok1", "", "", 60, 5, 0)
+	store.CreateAccount("cold", "tok2", "", "", 60, 5, 0)
 
 	pool := NewPool(store, cfg)
 	if err := pool.Start(); err != nil {
@@ -105,8 +105,8 @@ func TestPoolScheduling_RPMExhaustion(t *testing.T) {
 	store, cfg := setupTestStore(t)
 
 	// Account with RPM=2
-	store.CreateAccount("limited", "tok1", "", 2, 10, 0)
-	store.CreateAccount("backup", "tok2", "", 60, 10, 0)
+	store.CreateAccount("limited", "tok1", "", "", 2, 10, 0)
+	store.CreateAccount("backup", "tok2", "", "", 60, 10, 0)
 
 	pool := NewPool(store, cfg)
 	pool.Start()
@@ -145,8 +145,8 @@ func TestPoolScheduling_NoHealthyAccounts(t *testing.T) {
 func TestPoolScheduling_DisabledAccountSkipped(t *testing.T) {
 	store, cfg := setupTestStore(t)
 
-	id1, _ := store.CreateAccount("disabled", "tok1", "", 60, 5, 0)
-	store.CreateAccount("active", "tok2", "", 60, 5, 0)
+	id1, _ := store.CreateAccount("disabled", "tok1", "", "", 60, 5, 0)
+	store.CreateAccount("active", "tok2", "", "", 60, 5, 0)
 	store.UpdateAccountStatus(id1, "disabled")
 
 	pool := NewPool(store, cfg)
@@ -169,8 +169,8 @@ func TestPoolScheduling_DisabledAccountSkipped(t *testing.T) {
 func TestSessionAffinity_SameSession(t *testing.T) {
 	store, cfg := setupTestStore(t)
 
-	store.CreateAccount("acc1", "tok1", "", 60, 5, 0)
-	store.CreateAccount("acc2", "tok2", "", 60, 5, 0)
+	store.CreateAccount("acc1", "tok1", "", "", 60, 5, 0)
+	store.CreateAccount("acc2", "tok2", "", "", 60, 5, 0)
 
 	pool := NewPool(store, cfg)
 	pool.Start()
@@ -192,8 +192,8 @@ func TestSessionAffinity_SameSession(t *testing.T) {
 func TestSessionAffinity_DifferentSession(t *testing.T) {
 	store, cfg := setupTestStore(t)
 
-	store.CreateAccount("acc1", "tok1", "", 60, 5, 0)
-	store.CreateAccount("acc2", "tok2", "", 60, 5, 0)
+	store.CreateAccount("acc1", "tok1", "", "", 60, 5, 0)
+	store.CreateAccount("acc2", "tok2", "", "", 60, 5, 0)
 
 	pool := NewPool(store, cfg)
 	pool.Start()
@@ -214,8 +214,8 @@ func TestSessionAffinity_DifferentSession(t *testing.T) {
 func TestSessionAffinity_FallbackOnUnhealthy(t *testing.T) {
 	store, cfg := setupTestStore(t)
 
-	store.CreateAccount("acc1", "tok1", "", 60, 5, 0)
-	store.CreateAccount("acc2", "tok2", "", 60, 5, 0)
+	store.CreateAccount("acc1", "tok1", "", "", 60, 5, 0)
+	store.CreateAccount("acc2", "tok2", "", "", 60, 5, 0)
 
 	pool := NewPool(store, cfg)
 	pool.Start()
@@ -241,13 +241,42 @@ func TestSessionAffinity_FallbackOnUnhealthy(t *testing.T) {
 // Token Refresh Tests
 // ============================================================================
 
-func TestTokenRefresh_MarksRefreshing(t *testing.T) {
+func TestTokenRefresh_TriggersRefreshWithToken(t *testing.T) {
 	store, cfg := setupTestStore(t)
 	cfg.TokenRefreshLeadTime = 30 * time.Minute
 
-	// Expires in 20 minutes (within 30 min lead time)
+	// Expires in 20 minutes (within 30 min lead time), has refresh token
 	expiry := time.Now().Unix() + 1200
-	store.CreateAccount("expiring", "old-tok", "", 60, 5, expiry)
+	store.CreateAccount("expiring", "old-tok", "", "fake-refresh-token", 60, 5, expiry)
+
+	pool := NewPool(store, cfg)
+	pool.Start()
+	defer pool.Stop()
+
+	// checkTokenExpiry should attempt async refresh (will fail with fake token, but won't panic)
+	pool.checkTokenExpiry()
+
+	// Give async goroutine a moment to run
+	time.Sleep(500 * time.Millisecond)
+
+	// Account should still be active (refresh attempt happens async)
+	accts, _ := store.ListAccounts()
+	if len(accts) != 1 {
+		t.Fatalf("expected 1 account, got %d", len(accts))
+	}
+	// Status stays active since refresh is async and the OAuth call will fail with fake token
+	if accts[0].Status != "active" {
+		t.Errorf("expected 'active', got %q", accts[0].Status)
+	}
+}
+
+func TestTokenRefresh_NoActionWithoutRefreshToken(t *testing.T) {
+	store, cfg := setupTestStore(t)
+	cfg.TokenRefreshLeadTime = 30 * time.Minute
+
+	// Expires in 20 minutes but NO refresh token — should be skipped
+	expiry := time.Now().Unix() + 1200
+	store.CreateAccount("expiring", "old-tok", "", "", 60, 5, expiry)
 
 	pool := NewPool(store, cfg)
 	pool.Start()
@@ -256,11 +285,8 @@ func TestTokenRefresh_MarksRefreshing(t *testing.T) {
 	pool.checkTokenExpiry()
 
 	accts, _ := store.ListAccounts()
-	if len(accts) != 1 {
-		t.Fatalf("expected 1 account, got %d", len(accts))
-	}
-	if accts[0].Status != "refreshing" {
-		t.Errorf("expected 'refreshing', got %q", accts[0].Status)
+	if accts[0].Status != "active" {
+		t.Errorf("expected 'active' (no refresh token, no action), got %q", accts[0].Status)
 	}
 }
 
@@ -270,7 +296,7 @@ func TestTokenRefresh_NoActionIfFarFromExpiry(t *testing.T) {
 
 	// Expires in 2 hours (well outside lead time)
 	expiry := time.Now().Unix() + 7200
-	store.CreateAccount("fresh", "tok", "", 60, 5, expiry)
+	store.CreateAccount("fresh", "tok", "", "", 60, 5, expiry)
 
 	pool := NewPool(store, cfg)
 	pool.Start()
@@ -287,7 +313,7 @@ func TestTokenRefresh_NoActionIfFarFromExpiry(t *testing.T) {
 func TestTokenRefresh_ExternalTokenUpdate(t *testing.T) {
 	store, cfg := setupTestStore(t)
 
-	id, _ := store.CreateAccount("acct", "old", "", 60, 5, 0)
+	id, _ := store.CreateAccount("acct", "old", "", "", 60, 5, 0)
 	store.UpdateAccountStatus(id, "refreshing")
 
 	// Simulate external refresh
@@ -323,8 +349,8 @@ func TestTokenRefresh_ExternalTokenUpdate(t *testing.T) {
 func TestPickExcluding(t *testing.T) {
 	store, cfg := setupTestStore(t)
 
-	id1, _ := store.CreateAccount("acc1", "tok1", "", 60, 5, 0)
-	store.CreateAccount("acc2", "tok2", "", 60, 5, 0)
+	id1, _ := store.CreateAccount("acc1", "tok1", "", "", 60, 5, 0)
+	store.CreateAccount("acc2", "tok2", "", "", 60, 5, 0)
 
 	pool := NewPool(store, cfg)
 	pool.Start()
@@ -343,7 +369,7 @@ func TestPickExcluding(t *testing.T) {
 func TestPickExcluding_AllExcluded(t *testing.T) {
 	store, cfg := setupTestStore(t)
 
-	id1, _ := store.CreateAccount("only", "tok", "", 60, 5, 0)
+	id1, _ := store.CreateAccount("only", "tok", "", "", 60, 5, 0)
 
 	pool := NewPool(store, cfg)
 	pool.Start()

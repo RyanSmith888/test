@@ -24,9 +24,10 @@ type Account struct {
 	ProxyID     *int64 `json:"proxy_id"`      // bound proxy
 	TotalReqs   int64  `json:"total_reqs"`    // lifetime request counter
 	TokenExpiry int64  `json:"token_expiry"`  // unix timestamp, 0 = never
-	Fingerprint string `json:"fingerprint"`   // optional identifier
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
+	Fingerprint  string `json:"fingerprint"`              // optional identifier
+	RefreshToken string `json:"refresh_token,omitempty"` // OAuth refresh token
+	CreatedAt    string `json:"created_at"`
+	UpdatedAt    string `json:"updated_at"`
 }
 
 type APIKey struct {
@@ -108,6 +109,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 	total_reqs INTEGER NOT NULL DEFAULT 0,
 	token_expiry INTEGER NOT NULL DEFAULT 0,
 	fingerprint TEXT NOT NULL DEFAULT '',
+	refresh_token TEXT NOT NULL DEFAULT '',
 	created_at DATETIME DEFAULT (datetime('now')),
 	updated_at DATETIME DEFAULT (datetime('now'))
 );
@@ -190,6 +192,10 @@ func NewStore(cfg *Config) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("init schema: %w", err)
 	}
+
+	// Migration: add refresh_token column if missing (for existing databases)
+	db.Exec("ALTER TABLE accounts ADD COLUMN refresh_token TEXT NOT NULL DEFAULT ''")
+
 
 	s := &Store{
 		db:      db,
@@ -297,7 +303,7 @@ func (s *Store) flushLogs(entries []LogEntry) {
 func (s *Store) ListAccounts() ([]Account, error) {
 	rows, err := s.db.Query(`
 		SELECT id, name, token, status, rpm, max_concur, proxy_id,
-		       total_reqs, token_expiry, fingerprint, created_at, updated_at
+		       total_reqs, token_expiry, fingerprint, refresh_token, created_at, updated_at
 		FROM accounts ORDER BY id`)
 	if err != nil {
 		return nil, err
@@ -308,7 +314,7 @@ func (s *Store) ListAccounts() ([]Account, error) {
 	for rows.Next() {
 		var a Account
 		if err := rows.Scan(&a.ID, &a.Name, &a.Token, &a.Status, &a.RPM, &a.MaxConcur,
-			&a.ProxyID, &a.TotalReqs, &a.TokenExpiry, &a.Fingerprint, &a.CreatedAt, &a.UpdatedAt); err != nil {
+			&a.ProxyID, &a.TotalReqs, &a.TokenExpiry, &a.Fingerprint, &a.RefreshToken, &a.CreatedAt, &a.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, a)
@@ -320,20 +326,20 @@ func (s *Store) GetAccount(id int64) (*Account, error) {
 	var a Account
 	err := s.db.QueryRow(`
 		SELECT id, name, token, status, rpm, max_concur, proxy_id,
-		       total_reqs, token_expiry, fingerprint, created_at, updated_at
+		       total_reqs, token_expiry, fingerprint, refresh_token, created_at, updated_at
 		FROM accounts WHERE id=?`, id).Scan(&a.ID, &a.Name, &a.Token, &a.Status, &a.RPM, &a.MaxConcur,
-		&a.ProxyID, &a.TotalReqs, &a.TokenExpiry, &a.Fingerprint, &a.CreatedAt, &a.UpdatedAt)
+		&a.ProxyID, &a.TotalReqs, &a.TokenExpiry, &a.Fingerprint, &a.RefreshToken, &a.CreatedAt, &a.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
 	return &a, nil
 }
 
-func (s *Store) CreateAccount(name, token, fingerprint string, rpm, maxConcur int, tokenExpiry int64) (int64, error) {
+func (s *Store) CreateAccount(name, token, fingerprint, refreshToken string, rpm, maxConcur int, tokenExpiry int64) (int64, error) {
 	res, err := s.db.Exec(
-		`INSERT INTO accounts(name, token, fingerprint, rpm, max_concur, token_expiry)
-		 VALUES(?,?,?,?,?,?)`,
-		name, token, fingerprint, rpm, maxConcur, tokenExpiry,
+		`INSERT INTO accounts(name, token, fingerprint, refresh_token, rpm, max_concur, token_expiry)
+		 VALUES(?,?,?,?,?,?,?)`,
+		name, token, fingerprint, refreshToken, rpm, maxConcur, tokenExpiry,
 	)
 	if err != nil {
 		return 0, err
@@ -358,6 +364,13 @@ func (s *Store) UpdateAccountToken(id int64, token string, expiry int64) error {
 	_, err := s.db.Exec(
 		`UPDATE accounts SET token=?, token_expiry=?, status='active', updated_at=datetime('now')
 		 WHERE id=?`, token, expiry, id)
+	return err
+}
+
+func (s *Store) UpdateAccountRefreshToken(id int64, refreshToken string) error {
+	_, err := s.db.Exec(
+		"UPDATE accounts SET refresh_token=?, updated_at=datetime('now') WHERE id=?",
+		refreshToken, id)
 	return err
 }
 
