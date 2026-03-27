@@ -40,6 +40,7 @@ func (ah *AdminHandler) RegisterRoutes(mux *http.ServeMux, adminKey string) {
 	admin.HandleFunc("DELETE /accounts/{id}", ah.deleteAccount)
 	admin.HandleFunc("POST /accounts/verify", ah.verifyToken)
 	admin.HandleFunc("GET /accounts/{id}/usage", ah.getAccountUsage)
+	admin.HandleFunc("POST /accounts/{id}/test", ah.testAccountUpstream)
 
 	// API Keys
 	admin.HandleFunc("GET /keys", ah.listKeys)
@@ -296,6 +297,57 @@ func (ah *AdminHandler) getAccountUsage(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, 200, info)
 }
 
+func (ah *AdminHandler) testAccountUpstream(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	account, err := ah.store.GetAccount(id)
+	if err != nil || account == nil {
+		writeJSON(w, 404, map[string]any{"error": "not found"})
+		return
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	testBody := `{"model":"claude-haiku-4-5-20251001","max_tokens":5,"messages":[{"role":"user","content":"hi"}]}`
+
+	// 根据类型选端点
+	baseURL := ah.cfg.UpstreamURL
+	if isOAuthToken(account.Token) {
+		baseURL = oauthUpstreamURL
+	}
+	targetURL := baseURL + "/v1/messages"
+
+	req, _ := http.NewRequest("POST", targetURL, strings.NewReader(testBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("anthropic-version", "2023-06-01")
+	req.Header.Set("Authorization", "Bearer "+account.Token)
+	if isOAuthToken(account.Token) {
+		req.Header.Set("anthropic-beta", "claude-code-20250219,oauth-2025-04-20")
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		writeJSON(w, 200, map[string]any{
+			"target_url": targetURL,
+			"error":      err.Error(),
+			"token_type": account.AccountType,
+		})
+		return
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	var parsed any
+	json.Unmarshal(body, &parsed)
+
+	writeJSON(w, 200, map[string]any{
+		"target_url":  targetURL,
+		"status_code": resp.StatusCode,
+		"token_type":  account.AccountType,
+		"headers":     resp.Header,
+		"body":        parsed,
+		"body_raw":    string(body),
+	})
+}
+
 func fetchClaudeAccountInfo(token string) (map[string]any, error) {
 	client := &http.Client{Timeout: 15 * time.Second}
 
@@ -313,7 +365,7 @@ func fetchClaudeAccountInfo(token string) (map[string]any, error) {
 	usageBody, _ := io.ReadAll(usageResp.Body)
 
 	if usageResp.StatusCode == 401 || usageResp.StatusCode == 403 {
-		return nil, fmt.Errorf("token 无效或已过期 (HTTP %d)", usageResp.StatusCode)
+		return nil, fmt.Errorf("token 无效或已过期 (HTTP %d): %s", usageResp.StatusCode, string(usageBody))
 	}
 
 	var usage map[string]any
@@ -334,7 +386,7 @@ func fetchClaudeAccountInfo(token string) (map[string]any, error) {
 
 	// 3. 解析订阅类型
 	planType := "unknown"
-	hasClaudeCode := false
+	hasClaudeCode := true // OAuth token 默认认为有 Claude Code 资格
 	if profile != nil {
 		if account, ok := profile["account"].(map[string]any); ok {
 			if plan, ok := account["plan_type"].(string); ok {
@@ -364,9 +416,13 @@ func fetchClaudeAccountInfo(token string) (map[string]any, error) {
 		displayName = planType
 	}
 
+	// OAuth token: 只要不是 401/403 就认为有效
+	isValid := usageResp.StatusCode != 401 && usageResp.StatusCode != 403
+
 	result := map[string]any{
-		"valid":           usageResp.StatusCode == 200,
+		"valid":           isValid,
 		"has_claude_code": hasClaudeCode,
+		"usage_status":    usageResp.StatusCode,
 		"account_type":    "oauth",
 		"plan_type":       planType,
 		"plan_display":    displayName,
