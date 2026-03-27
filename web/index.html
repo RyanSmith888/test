@@ -249,7 +249,22 @@ tr:hover td { background: #fafbfc; }
     <h3 class="text-sm font-semibold text-gray-700 mb-3">新增账号</h3>
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
       <input x-model="newAccount.name" placeholder="账号名称" class="input">
-      <input x-model="newAccount.token" placeholder="Token / API Key" class="input lg:col-span-2">
+      <div class="flex gap-2 lg:col-span-2">
+        <input x-model="newAccount.token" placeholder="Token（sk-ant-sid02-... / sk-ant-oat01-... / sk-ant-api03-...）" class="input flex-1 font-mono text-xs">
+        <button @click="verifyToken()" :disabled="!newAccount.token || verifying"
+                class="btn btn-ghost btn-sm whitespace-nowrap disabled:opacity-40">
+          <span x-show="!verifying">验证 Token</span>
+          <span x-show="verifying">验证中...</span>
+        </button>
+      </div>
+      <div x-show="verifyResult!==null" class="lg:col-span-3 text-sm -mt-1">
+        <div x-show="verifyResult===true" class="text-green-600 flex items-center gap-1">
+          <span class="font-bold">&#10003;</span> Token 有效（<span x-text="verifyTokenType"></span>），可以保存
+        </div>
+        <div x-show="verifyResult===false" class="text-red-500">
+          &#10007; Token 无效或已过期，请重新从 claude.ai Settings 生成
+        </div>
+      </div>
       <input x-model="newAccount.fingerprint" placeholder="User-Agent 指纹（可选）" class="input" title="从 claude --version 获取">
       <input x-model.number="newAccount.rpm" placeholder="每分钟请求数 (默认 20)" type="number" class="input">
       <input x-model.number="newAccount.max_concur" placeholder="最大并发数 (默认 5)" type="number" class="input">
@@ -601,6 +616,11 @@ function gateway() {
     newKey: { name:'', daily_limit:1000 },
     batchProxies: '',
 
+    // Token verify
+    verifying: false,
+    verifyResult: null,
+    verifyTokenType: '',
+
     // Password change
     pwForm: { old:'', new1:'', new2:'' },
     pwMsg: '',
@@ -808,11 +828,25 @@ function gateway() {
     },
 
     // ---- CRUD ----
+    async verifyToken() {
+      if (!this.newAccount.token) return;
+      this.verifying = true;
+      this.verifyResult = null;
+      try {
+        const data = await this.api('POST','/accounts/verify', { token: this.newAccount.token });
+        this.verifyResult = data.valid;
+        this.verifyTokenType = data.token_type || '';
+        if (!data.valid && data.error) console.error('Token 验证失败:', data.error);
+      } catch(e) { this.verifyResult = false; }
+      finally { this.verifying = false; }
+    },
+
     async addAccount() {
       try {
         await this.api('POST','/accounts', this.newAccount);
         this.newAccount = { name:'', token:'', fingerprint:'', refresh_token:'', rpm:20, max_concur:5 };
         this.showAddAccount = false;
+        this.verifyResult = null;
         await this.loadAccounts();
         this.toast('账号添加成功', 'success');
       } catch(e) { this.toast(e.message,'error'); }

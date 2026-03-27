@@ -95,6 +95,39 @@ All settings via environment variables. See `.env.example` for full list.
 4. Optionally add SOCKS5 proxies (Proxies tab)
 5. Generate employee API keys (API Keys tab)
 
+### How to Get Token
+
+#### Method 1: From claude.ai Web (Recommended)
+1. Log in to https://claude.ai
+2. Click avatar (top right) → **Settings**
+3. Find **Claude Code** in left sidebar
+4. Click **Generate session key** or **Create key**
+5. Copy the `sk-ant-sid02-...` key
+
+Paste it into the Token field in the admin dashboard, click "Verify Token" to confirm, then save.
+
+#### Method 2: From Claude Code CLI
+```bash
+# Generate a long-lived token (~1 year)
+claude setup-token
+
+# Or read current login token (8h validity)
+# macOS:
+security find-generic-password -s 'Claude Code-credentials' -w | python3 -c \
+  "import sys,json; d=json.load(sys.stdin); print(d['claudeAiOauth']['accessToken'])"
+
+# Linux:
+cat ~/.claude/.credentials.json | python3 -c \
+  "import sys,json; d=json.load(sys.stdin); print(d['claudeAiOauth']['accessToken'])"
+```
+
+#### Token Types
+| Format | Source | Validity | Needs Refresh Token |
+|--------|--------|----------|-------------------|
+| `sk-ant-sid02-` | claude.ai Web Settings | Long-lived | No |
+| `sk-ant-oat01-` | CLI OAuth login | 8 hours | Yes (`sk-ant-ort01-`) |
+| `sk-ant-api03-` | Anthropic Console | Permanent | No |
+
 ### 2. Employee API Calls
 
 ```bash

@@ -3,9 +3,11 @@ package main
 import (
 	"embed"
 	"encoding/json"
+	"io"
 	"io/fs"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -35,6 +37,7 @@ func (ah *AdminHandler) RegisterRoutes(mux *http.ServeMux, adminKey string) {
 	admin.HandleFunc("PUT /accounts/{id}/status", ah.updateAccountStatus)
 	admin.HandleFunc("PUT /accounts/{id}/token", ah.updateAccountToken)
 	admin.HandleFunc("DELETE /accounts/{id}", ah.deleteAccount)
+	admin.HandleFunc("POST /accounts/verify", ah.verifyToken)
 
 	// API Keys
 	admin.HandleFunc("GET /keys", ah.listKeys)
@@ -231,6 +234,61 @@ func (ah *AdminHandler) deleteAccount(w http.ResponseWriter, r *http.Request) {
 	}
 	ah.pool.Reload()
 	writeJSON(w, 200, map[string]string{"status": "deleted"})
+}
+
+func (ah *AdminHandler) verifyToken(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Token == "" {
+		writeJSON(w, 400, map[string]any{"error": "token required"})
+		return
+	}
+
+	testBody := `{"model":"claude-haiku-4-5-20251001","max_tokens":1,"messages":[{"role":"user","content":"hi"}]}`
+	req, err := http.NewRequest("POST", ah.cfg.UpstreamURL+"/v1/messages", strings.NewReader(testBody))
+	if err != nil {
+		writeJSON(w, 500, map[string]any{"error": err.Error()})
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("anthropic-version", "2023-06-01")
+
+	if isOAuthToken(body.Token) {
+		req.Header.Set("Authorization", "Bearer "+body.Token)
+		req.Header.Set("anthropic-beta", "claude-code-20250219,oauth-2025-04-20")
+	} else {
+		req.Header.Set("x-api-key", body.Token)
+		req.Header.Set("Authorization", "Bearer "+body.Token)
+	}
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		writeJSON(w, 200, map[string]any{"valid": false, "error": "连接失败: " + err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+	rawBody, _ := io.ReadAll(resp.Body)
+
+	valid := resp.StatusCode == 200 || resp.StatusCode == 400 || resp.StatusCode == 529
+
+	tokenType := "API Key"
+	if strings.HasPrefix(body.Token, "sk-ant-sid02-") {
+		tokenType = "Session Token (sid02)"
+	} else if strings.HasPrefix(body.Token, "sk-ant-oat01-") {
+		tokenType = "OAuth Token (oat01)"
+	}
+
+	result := map[string]any{
+		"valid":       valid,
+		"status_code": resp.StatusCode,
+		"token_type":  tokenType,
+	}
+	if !valid {
+		result["error"] = "Token 被 Anthropic 拒绝 (HTTP " + strconv.Itoa(resp.StatusCode) + "): " + string(rawBody)
+	}
+	writeJSON(w, 200, result)
 }
 
 // ============================================================================

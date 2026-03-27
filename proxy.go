@@ -170,6 +170,22 @@ func (ph *ProxyHandler) doUpstreamRequest(
 	// Set account authorization
 	upReq.Header.Set("Authorization", "Bearer "+as.Account.Token)
 
+	// OAuth token (sid02/oat01/ort01) 需要携带特定 beta headers
+	if isOAuthToken(as.Account.Token) {
+		existing := upReq.Header.Get("anthropic-beta")
+		required := []string{"claude-code-20250219", "oauth-2025-04-20"}
+		for _, r := range required {
+			if !strings.Contains(existing, r) {
+				if existing == "" {
+					existing = r
+				} else {
+					existing = existing + "," + r
+				}
+			}
+		}
+		upReq.Header.Set("anthropic-beta", existing)
+	}
+
 	// 如果账号有录入指纹（原始设备 User-Agent），用它覆盖 UA
 	if as.Account.Fingerprint != "" {
 		upReq.Header.Set("User-Agent", as.Account.Fingerprint)
@@ -382,6 +398,13 @@ func extractModel(body []byte) string {
 	}
 	json.Unmarshal(body, &req)
 	return req.Model
+}
+
+// isOAuthToken 判断是否是 OAuth 类型的订阅 token（需要特殊 beta headers）
+func isOAuthToken(token string) bool {
+	return strings.HasPrefix(token, "sk-ant-sid02-") ||
+		strings.HasPrefix(token, "sk-ant-oat01-") ||
+		strings.HasPrefix(token, "sk-ant-ort01-")
 }
 
 func (ph *ProxyHandler) pushLog(keyID, accountID int64, model, path string, status int, startTime time.Time) {
