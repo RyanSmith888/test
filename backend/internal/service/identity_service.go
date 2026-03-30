@@ -103,7 +103,8 @@ func (s *IdentityService) GetOrCreateFingerprint(ctx context.Context, accountID 
 	}
 
 	// 缓存不存在或解析失败，创建新指纹
-	fp := s.createFingerprintFromHeaders(headers)
+	// 使用账号级多样化默认值，避免所有新账号使用相同的默认指纹
+	fp := s.createFingerprintFromHeadersWithDiversity(accountID, headers)
 
 	// 生成随机ClientID
 	fp.ClientID = generateClientID()
@@ -118,24 +119,39 @@ func (s *IdentityService) GetOrCreateFingerprint(ctx context.Context, accountID 
 	return fp, nil
 }
 
-// createFingerprintFromHeaders 从请求头创建指纹
+// createFingerprintFromHeaders 从请求头创建指纹（使用全局默认值，向后兼容）
 func (s *IdentityService) createFingerprintFromHeaders(headers http.Header) *Fingerprint {
+	return s.createFingerprintFromHeadersWithDiversity(0, headers)
+}
+
+// createFingerprintFromHeadersWithDiversity 从请求头创建指纹，使用账号级多样化默认值
+// 当客户端未提供某些头时，根据 accountID 从预定义池中选择不同的默认值
+// 这样不同账号即使来自相同的客户端，也会有不同的指纹默认值
+func (s *IdentityService) createFingerprintFromHeadersWithDiversity(accountID int64, headers http.Header) *Fingerprint {
+	// 获取基于账号的多样化默认指纹
+	var defaults Fingerprint
+	if accountID > 0 {
+		defaults = GetDiverseDefaultFingerprint(accountID)
+	} else {
+		defaults = defaultFingerprint
+	}
+
 	fp := &Fingerprint{}
 
 	// 获取User-Agent
 	if ua := headers.Get("User-Agent"); ua != "" {
 		fp.UserAgent = ua
 	} else {
-		fp.UserAgent = defaultFingerprint.UserAgent
+		fp.UserAgent = defaults.UserAgent
 	}
 
-	// 获取x-stainless-*头，如果没有则使用默认值
-	fp.StainlessLang = getHeaderOrDefault(headers, "X-Stainless-Lang", defaultFingerprint.StainlessLang)
-	fp.StainlessPackageVersion = getHeaderOrDefault(headers, "X-Stainless-Package-Version", defaultFingerprint.StainlessPackageVersion)
-	fp.StainlessOS = getHeaderOrDefault(headers, "X-Stainless-OS", defaultFingerprint.StainlessOS)
-	fp.StainlessArch = getHeaderOrDefault(headers, "X-Stainless-Arch", defaultFingerprint.StainlessArch)
-	fp.StainlessRuntime = getHeaderOrDefault(headers, "X-Stainless-Runtime", defaultFingerprint.StainlessRuntime)
-	fp.StainlessRuntimeVersion = getHeaderOrDefault(headers, "X-Stainless-Runtime-Version", defaultFingerprint.StainlessRuntimeVersion)
+	// 获取x-stainless-*头，如果没有则使用多样化默认值
+	fp.StainlessLang = getHeaderOrDefault(headers, "X-Stainless-Lang", defaults.StainlessLang)
+	fp.StainlessPackageVersion = getHeaderOrDefault(headers, "X-Stainless-Package-Version", defaults.StainlessPackageVersion)
+	fp.StainlessOS = getHeaderOrDefault(headers, "X-Stainless-OS", defaults.StainlessOS)
+	fp.StainlessArch = getHeaderOrDefault(headers, "X-Stainless-Arch", defaults.StainlessArch)
+	fp.StainlessRuntime = getHeaderOrDefault(headers, "X-Stainless-Runtime", defaults.StainlessRuntime)
+	fp.StainlessRuntimeVersion = getHeaderOrDefault(headers, "X-Stainless-Runtime-Version", defaults.StainlessRuntimeVersion)
 
 	return fp
 }
@@ -381,6 +397,12 @@ func generateUUIDFromSeed(seed string) string {
 
 	return fmt.Sprintf("%x-%x-%x-%x-%x",
 		bytes[0:4], bytes[4:6], bytes[6:8], bytes[8:10], bytes[10:16])
+}
+
+// GetVirtualIdentityForAccount 获取指定账号的虚拟身份信息
+// 用于非 OAuth 账号的 metadata.user_id 注入
+func (s *IdentityService) GetVirtualIdentityForAccount(accountID int64) *VirtualIdentity {
+	return GenerateVirtualIdentity(accountID)
 }
 
 // parseUserAgentVersion 解析user-agent版本号

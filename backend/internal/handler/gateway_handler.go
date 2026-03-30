@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	mathrand "math/rand"
 	"net/http"
 	"strconv"
 	"strings"
@@ -51,6 +52,7 @@ type GatewayHandler struct {
 	maxAccountSwitchesGemini  int
 	cfg                       *config.Config
 	settingService            *service.SettingService
+	translationService        *service.TranslationService
 }
 
 // NewGatewayHandler creates a new GatewayHandler
@@ -68,6 +70,7 @@ func NewGatewayHandler(
 	userMsgQueueService *service.UserMessageQueueService,
 	cfg *config.Config,
 	settingService *service.SettingService,
+	translationService *service.TranslationService,
 ) *GatewayHandler {
 	pingInterval := time.Duration(0)
 	maxAccountSwitches := 10
@@ -104,6 +107,7 @@ func NewGatewayHandler(
 		maxAccountSwitchesGemini:  maxAccountSwitchesGemini,
 		cfg:                       cfg,
 		settingService:            settingService,
+		translationService:        translationService,
 	}
 }
 
@@ -145,6 +149,14 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	if len(body) == 0 {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
 		return
+	}
+
+	// ⭐ 翻译中文请求内容为英文（隐藏用户语言特征，防止上游检测到中文用户）
+	if h.translationService != nil {
+		if translatedBody, wasTranslated := h.translationService.TranslateRequestBody(c.Request.Context(), body); wasTranslated {
+			body = translatedBody
+			c.Set("translation_applied", true)
+		}
 	}
 
 	setOpsRequestContext(c, "", false, body)
@@ -363,10 +375,20 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					}
 				}
 
+				// ⭐ 动态并发：根据账号健康分降低最大并发
+				acctMaxConcurrency := selection.WaitPlan.MaxConcurrency
+				if h.cfg.Gateway.EnableDynamicConcurrency {
+					if monitor := h.gatewayService.GetHealthMonitor(); monitor != nil {
+						if dynConc := monitor.GetDynamicConcurrency(c.Request.Context(), account.ID); dynConc < acctMaxConcurrency {
+							acctMaxConcurrency = dynConc
+						}
+					}
+				}
+
 				accountReleaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
 					c,
 					account.ID,
-					selection.WaitPlan.MaxConcurrency,
+					acctMaxConcurrency,
 					selection.WaitPlan.Timeout,
 					reqStream,
 					&streamStarted,
@@ -585,10 +607,20 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					}
 				}
 
+				// ⭐ 动态并发：根据账号健康分降低最大并发
+				acctMaxConcurrency := selection.WaitPlan.MaxConcurrency
+				if h.cfg.Gateway.EnableDynamicConcurrency {
+					if monitor := h.gatewayService.GetHealthMonitor(); monitor != nil {
+						if dynConc := monitor.GetDynamicConcurrency(c.Request.Context(), account.ID); dynConc < acctMaxConcurrency {
+							acctMaxConcurrency = dynConc
+						}
+					}
+				}
+
 				accountReleaseFunc, err = h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
 					c,
 					account.ID,
-					selection.WaitPlan.MaxConcurrency,
+					acctMaxConcurrency,
 					selection.WaitPlan.Timeout,
 					reqStream,
 					&streamStarted,
@@ -659,6 +691,31 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// 注入回调到 ParsedRequest：使用外层 wrapper 以便提前清理 AfterFunc
 			parsedReq.OnUpstreamAccepted = queueRelease
 			// ===== 用户消息串行队列 END =====
+
+			// ===== 账号级速率限制 START =====
+			if h.cfg != nil && h.cfg.Gateway.EnableAccountRateLimit {
+				monitor := h.gatewayService.GetHealthMonitor()
+				if monitor != nil {
+					if err := monitor.CheckAccountRateLimit(account.ID); err != nil {
+						reqLog.Info("gateway.account_rate_limit_exceeded",
+							zap.Int64("account_id", account.ID),
+							zap.Error(err),
+						)
+						// 不阻断请求，仅记录日志（fail-open 策略）
+					}
+				}
+			}
+			// ===== 账号级速率限制 END =====
+
+			// ===== 请求时间随机化 START =====
+			// 根据账号 ID 设置不同的处理延迟，让不同账号的请求分散在时间轴上
+			if h.cfg != nil && h.cfg.Gateway.EnableRequestDelay {
+				delay := calculateRequestDelay(account.ID, h.cfg.Gateway.RequestDelayMaxMs)
+				if delay > 0 {
+					time.Sleep(delay)
+				}
+			}
+			// ===== 请求时间随机化 END =====
 
 			// 转发请求 - 根据账号平台分流
 			var result *service.ForwardResult
@@ -1403,6 +1460,13 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 		return
 	}
 
+	// ⭐ 翻译中文请求内容为英文（count_tokens 也需一致翻译）
+	if h.translationService != nil {
+		if translatedBody, _ := h.translationService.TranslateRequestBody(c.Request.Context(), body); len(translatedBody) > 0 {
+			body = translatedBody
+		}
+	}
+
 	setOpsRequestContext(c, "", false, body)
 
 	parsedReq, err := service.ParseGatewayRequest(body, domain.PlatformAnthropic)
@@ -1703,6 +1767,31 @@ func billingErrorDetails(err error) (status int, code, message string) {
 		msg = "Billing error"
 	}
 	return http.StatusForbidden, "billing_error", msg
+}
+
+// calculateRequestDelay 计算基于账号 ID 的请求延迟
+// 不同的账号分配不同的延迟，让请求自然地分散在时间轴上
+func calculateRequestDelay(accountID int64, maxDelayMs int) time.Duration {
+	if maxDelayMs <= 0 {
+		maxDelayMs = 200
+	}
+
+	// 基础延迟：根据账号 ID 的哈希值确定
+	hash := accountID % 100
+	baseDelay := time.Duration(hash*int64(maxDelayMs)/100) * time.Millisecond
+
+	// 添加小的随机抖动（±20%）
+	jitterRange := maxDelayMs / 5
+	if jitterRange <= 0 {
+		jitterRange = 1
+	}
+	jitter := time.Duration(mathrand.Intn(jitterRange*2)-jitterRange) * time.Millisecond
+
+	result := baseDelay + jitter
+	if result < 0 {
+		result = 0
+	}
+	return result
 }
 
 func (h *GatewayHandler) metadataBridgeEnabled() bool {

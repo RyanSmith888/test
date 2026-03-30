@@ -87,6 +87,9 @@ func RegisterAdminRoutes(
 
 		// 定时测试计划
 		registerScheduledTestRoutes(admin, h)
+
+		// 账号健康监控
+		registerAccountHealthRoutes(admin, h)
 	}
 }
 
@@ -94,6 +97,14 @@ func registerAdminAPIKeyRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	apiKeys := admin.Group("/api-keys")
 	{
 		apiKeys.PUT("/:id", h.Admin.APIKey.UpdateGroup)
+	}
+}
+
+func registerAccountHealthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	health := admin.Group("/accounts")
+	{
+		health.GET("/health", h.Admin.AccountHealth.GetAccountsHealth)
+		health.GET("/:id/health", h.Admin.AccountHealth.GetAccountHealth)
 	}
 }
 

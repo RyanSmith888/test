@@ -83,6 +83,21 @@ type Config struct {
 	Gemini                  GeminiConfig                  `mapstructure:"gemini"`
 	Update                  UpdateConfig                  `mapstructure:"update"`
 	Idempotency             IdempotencyConfig             `mapstructure:"idempotency"`
+	Translation             TranslationConfig             `mapstructure:"translation"`
+}
+
+// TranslationConfig 翻译服务配置
+type TranslationConfig struct {
+	// Enabled: 是否启用翻译服务（将中文请求翻译为英文发送给上游）
+	Enabled bool `mapstructure:"enabled"`
+	// AliyunAccessKeyID: 阿里云 AccessKey ID
+	AliyunAccessKeyID string `mapstructure:"aliyun_access_key_id"`
+	// AliyunAccessKeySecret: 阿里云 AccessKey Secret
+	AliyunAccessKeySecret string `mapstructure:"aliyun_access_key_secret"`
+	// CacheTTLSeconds: 翻译缓存 TTL（秒），默认 86400（24小时）
+	CacheTTLSeconds int `mapstructure:"cache_ttl_seconds"`
+	// TranslateResponses: 是否翻译上游响应（英文→中文），默认 false
+	TranslateResponses bool `mapstructure:"translate_responses"`
 }
 
 type LogConfig struct {
@@ -467,6 +482,22 @@ type GatewayConfig struct {
 	// UserMessageQueue: 用户消息串行队列配置
 	// 对 role:"user" 的真实用户消息实施账号级串行化 + RPM 自适应延迟
 	UserMessageQueue UserMessageQueueConfig `mapstructure:"user_message_queue"`
+
+	// ⭐ 虚拟身份：为每个账号生成独立的虚拟身份（User-Agent/OS/Arch 等）
+	// 启用后，不同账号会使用不同的请求指纹，避免批量聚合特征
+	EnableVirtualIdentity bool `mapstructure:"enable_virtual_identity"`
+
+	// ⭐ 请求时间随机化：根据账号 ID 分散请求时间
+	// 启用后，每个请求会根据账号 ID 产生 0-RequestDelayMaxMs 的延迟
+	EnableRequestDelay bool `mapstructure:"enable_request_delay"`
+	// RequestDelayMaxMs: 最大延迟毫秒数（默认 200）
+	RequestDelayMaxMs int `mapstructure:"request_delay_max_ms"`
+
+	// ⭐ 账号级速率限制：为每个账号设置独立的速率限制
+	EnableAccountRateLimit bool `mapstructure:"enable_account_rate_limit"`
+
+	// ⭐ 动态并发调整：根据账号健康状态动态调整并发数
+	EnableDynamicConcurrency bool `mapstructure:"enable_dynamic_concurrency"`
 }
 
 // UserMessageQueueConfig 用户消息串行队列配置

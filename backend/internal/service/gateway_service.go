@@ -570,6 +570,7 @@ type GatewayService struct {
 	debugClaudeMimic      atomic.Bool
 	debugGatewayBodyFile  atomic.Pointer[os.File] // non-nil when SUB2API_DEBUG_GATEWAY_BODY is set
 	tlsFPProfileService   *TLSFingerprintProfileService
+	healthMonitor         *AccountHealthMonitor // 账号健康监控（错误跟踪/动态并发）
 }
 
 // NewGatewayService creates a new GatewayService
@@ -629,6 +630,7 @@ func NewGatewayService(
 		modelsListCacheTTL:   modelsListTTL,
 		responseHeaderFilter: compileResponseHeaderFilter(cfg),
 		tlsFPProfileService:  tlsFPProfileService,
+		healthMonitor:        NewAccountHealthMonitor(),
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		userGroupRateRepo,
@@ -5681,6 +5683,12 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		}
 	}
 
+	// ⭐ 注入虚拟 metadata（为每个账号注入唯一的 user_id，必须在创建请求之前）
+	if s.cfg != nil && s.cfg.Gateway.EnableVirtualIdentity {
+		vi := s.identityService.GetVirtualIdentityForAccount(account.ID)
+		body = injectVirtualMetadata(body, vi)
+	}
+
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -5707,6 +5715,18 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	// OAuth账号：应用缓存的指纹到请求头（覆盖白名单透传的头）
 	if fingerprint != nil {
 		s.identityService.ApplyFingerprint(req, fingerprint)
+	}
+
+	// ⭐ 虚拟身份：为非 OAuth 账号也注入多样化的请求头
+	// 确保不同账号使用不同的 User-Agent / OS / Arch 等，避免所有请求使用相同指纹
+	if s.cfg != nil && s.cfg.Gateway.EnableVirtualIdentity && fingerprint == nil {
+		vi := GenerateVirtualIdentity(account.ID)
+		if vi != nil {
+			setHeaderRaw(req.Header, "User-Agent", vi.UserAgent)
+			setHeaderRaw(req.Header, "X-Stainless-OS", vi.OSType)
+			setHeaderRaw(req.Header, "X-Stainless-Arch", vi.Architecture)
+			setHeaderRaw(req.Header, "X-Stainless-Runtime-Version", vi.RuntimeVer)
+		}
 	}
 
 	// 确保必要的headers存在（保持原始大小写）
@@ -5787,6 +5807,63 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	}
 
 	return req, nil
+}
+
+// injectVirtualMetadata 为请求体注入虚拟 metadata
+// 如果 metadata 不存在则创建，如果已有 user_id 则不覆盖
+func injectVirtualMetadata(body []byte, identity *VirtualIdentity) []byte {
+	if len(body) == 0 || identity == nil {
+		return body
+	}
+
+	metadata := gjson.GetBytes(body, "metadata")
+	if !metadata.Exists() {
+		// 注入 metadata.user_id
+		newBody, err := sjson.SetBytes(body, "metadata.user_id", identity.ClientID)
+		if err != nil {
+			return body
+		}
+		return newBody
+	}
+
+	// 已有 metadata，仅在 user_id 缺失时注入
+	userID := metadata.Get("user_id")
+	if !userID.Exists() || userID.String() == "" {
+		newBody, err := sjson.SetBytes(body, "metadata.user_id", identity.ClientID)
+		if err != nil {
+			return body
+		}
+		return newBody
+	}
+
+	return body
+}
+
+// RecordUpstreamErrorPattern 记录上游错误模式，用于账号健康监控
+// 如果检测到高风险错误模式（10分钟内5次403），返回 true
+func (s *GatewayService) RecordUpstreamErrorPattern(ctx context.Context, account *Account, statusCode int) bool {
+	if s.healthMonitor == nil {
+		return false
+	}
+
+	if statusCode < 400 {
+		// 成功请求
+		s.healthMonitor.RecordSuccess(account.ID)
+		return false
+	}
+
+	// 记录错误模式
+	isHighRisk := s.healthMonitor.RecordErrorPattern(account.ID, statusCode)
+	if isHighRisk {
+		logger.LegacyPrintf("service.gateway", "Account %d has high error rate: possible suspension detected", account.ID)
+	}
+
+	return isHighRisk
+}
+
+// GetHealthMonitor 获取健康监控实例（用于外部查询）
+func (s *GatewayService) GetHealthMonitor() *AccountHealthMonitor {
+	return s.healthMonitor
 }
 
 // getBetaHeader 处理anthropic-beta header
@@ -6546,6 +6623,9 @@ func (s *GatewayService) handleRetryExhaustedSideEffects(ctx context.Context, re
 func (s *GatewayService) handleFailoverSideEffects(ctx context.Context, resp *http.Response, account *Account) {
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
+
+	// ⭐ 记录错误模式到健康监控
+	s.RecordUpstreamErrorPattern(ctx, account, resp.StatusCode)
 }
 
 // handleRetryExhaustedError 处理重试耗尽后的错误
@@ -8410,6 +8490,12 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 		}
 	}
 
+	// ⭐ 注入虚拟 metadata（count_tokens 请求也需要一致的 user_id）
+	if s.cfg != nil && s.cfg.Gateway.EnableVirtualIdentity {
+		vi := s.identityService.GetVirtualIdentityForAccount(account.ID)
+		body = injectVirtualMetadata(body, vi)
+	}
+
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
@@ -8436,6 +8522,17 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 	// OAuth 账号：应用指纹到请求头（受设置开关控制）
 	if ctEnableFP && ctFingerprint != nil {
 		s.identityService.ApplyFingerprint(req, ctFingerprint)
+	}
+
+	// ⭐ 虚拟身份：为非 OAuth 的 count_tokens 请求也注入多样化的请求头
+	if s.cfg != nil && s.cfg.Gateway.EnableVirtualIdentity && ctFingerprint == nil {
+		vi := GenerateVirtualIdentity(account.ID)
+		if vi != nil {
+			setHeaderRaw(req.Header, "User-Agent", vi.UserAgent)
+			setHeaderRaw(req.Header, "X-Stainless-OS", vi.OSType)
+			setHeaderRaw(req.Header, "X-Stainless-Arch", vi.Architecture)
+			setHeaderRaw(req.Header, "X-Stainless-Runtime-Version", vi.RuntimeVer)
+		}
 	}
 
 	// 确保必要的 headers 存在（保持原始大小写）

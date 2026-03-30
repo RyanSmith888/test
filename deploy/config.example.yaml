@@ -379,6 +379,63 @@ gateway:
     #   profile_2:
     #     name: "Custom Profile 2"
 
+  # =========================================================================
+  # Virtual Identity Configuration / 虚拟身份配置
+  # =========================================================================
+  # Enable per-account virtual identity (unique User-Agent/OS/Arch per account)
+  # 启用虚拟身份：为每个账号分配独立的 User-Agent/OS/架构等指纹
+  # 避免所有账号使用相同的请求特征，降低批量检测风险
+  enable_virtual_identity: true
+
+  # =========================================================================
+  # Request Delay Configuration / 请求延迟配置
+  # =========================================================================
+  # Enable request time randomization (spread requests across time)
+  # 启用请求时间随机化：根据账号 ID 分散请求时间，避免批量聚合特征
+  enable_request_delay: true
+  # Max delay in milliseconds (0-request_delay_max_ms per account)
+  # 最大延迟毫秒数（每个账号产生 0 到此值之间的延迟）
+  request_delay_max_ms: 200
+
+  # =========================================================================
+  # Account Rate Limit Configuration / 账号级速率限制配置
+  # =========================================================================
+  # Enable per-account rate limiting
+  # 启用账号级速率限制：根据账号健康状态动态调整每秒请求上限
+  enable_account_rate_limit: true
+
+  # =========================================================================
+  # Dynamic Concurrency Configuration / 动态并发配置
+  # =========================================================================
+  # Enable dynamic concurrency adjustment based on account health
+  # 启用动态并发调整：根据账号成功率/错误率自动调整并发数
+  enable_dynamic_concurrency: true
+
+# =============================================================================
+# Translation Configuration / 翻译服务配置
+# =============================================================================
+# Translates Chinese user requests to English before sending to upstream API,
+# preventing the upstream from detecting Chinese language patterns.
+# 将中文用户请求翻译为英文后发送给上游 API，防止上游检测到中文用户特征。
+translation:
+  # Enable translation service / 启用翻译服务
+  enabled: true
+
+  # Aliyun Machine Translation API credentials / 阿里云机器翻译 API 密钥
+  # Get from: https://ram.console.aliyun.com/manage/ak
+  aliyun_access_key_id: ""
+  aliyun_access_key_secret: ""
+
+  # Translation cache TTL in seconds (default: 86400 = 24 hours)
+  # 翻译缓存有效期（秒），默认 24 小时
+  cache_ttl_seconds: 86400
+
+  # Whether to translate upstream responses (English → Chinese)
+  # 是否翻译上游响应（英文→中文），默认关闭
+  # Note: Only works for non-streaming responses. Streaming responses are not translated.
+  # 注意：仅对非流式响应生效，流式响应不翻译。
+  translate_responses: false
+
 # =============================================================================
 # Logging Configuration
 # 日志配置
