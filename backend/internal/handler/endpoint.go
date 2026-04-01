@@ -16,9 +16,25 @@ import (
 
 const (
 	EndpointMessages        = "/v1/messages"
+	EndpointCountTokens     = "/v1/messages/count_tokens"
 	EndpointChatCompletions = "/v1/chat/completions"
 	EndpointResponses       = "/v1/responses"
+	EndpointFiles           = "/v1/files"
+	EndpointFileContent     = "/v1/files/content"
+	EndpointSessions        = "/v1/sessions"
+	EndpointSessionEvents   = "/v1/sessions/events"
+	EndpointSessionArchive  = "/v1/sessions/archive"
+	EndpointSessionWS       = "/v1/sessions/ws"
 	EndpointGeminiModels    = "/v1beta/models"
+	EndpointClaudeCLIProfile = "/api/claude_cli_profile"
+	EndpointOAuthProfile     = "/api/oauth/profile"
+	EndpointOAuthUsage       = "/api/oauth/usage"
+	EndpointOAuthRoles       = "/api/oauth/claude_cli/roles"
+	EndpointOAuthCreateAPIKey = "/api/oauth/claude_cli/create_api_key"
+	EndpointBootstrap         = "/api/claude_cli/bootstrap"
+	EndpointUserSettings      = "/api/claude_code/user_settings"
+	EndpointManagedSettings   = "/api/claude_code/settings"
+	EndpointPolicyLimits      = "/api/claude_code/policy_limits"
 )
 
 // gin.Context keys used by the middleware and helpers below.
@@ -42,12 +58,44 @@ func NormalizeInboundEndpoint(path string) string {
 	switch {
 	case strings.Contains(path, EndpointChatCompletions):
 		return EndpointChatCompletions
+	case strings.Contains(path, EndpointCountTokens):
+		return EndpointCountTokens
 	case strings.Contains(path, EndpointMessages):
 		return EndpointMessages
 	case strings.Contains(path, EndpointResponses):
 		return EndpointResponses
+	case strings.Contains(path, "/v1/files/") && strings.Contains(path, "/content"):
+		return EndpointFileContent
+	case strings.Contains(path, EndpointFiles):
+		return EndpointFiles
+	case strings.Contains(path, "/v1/sessions/ws/"):
+		return EndpointSessionWS
+	case strings.Contains(path, "/v1/sessions/") && strings.HasSuffix(strings.TrimRight(path, "/"), "/archive"):
+		return EndpointSessionArchive
+	case strings.Contains(path, "/v1/sessions/") && strings.HasSuffix(strings.TrimRight(path, "/"), "/events"):
+		return EndpointSessionEvents
+	case strings.Contains(path, EndpointSessions):
+		return EndpointSessions
 	case strings.Contains(path, EndpointGeminiModels):
 		return EndpointGeminiModels
+	case strings.Contains(path, EndpointClaudeCLIProfile):
+		return EndpointClaudeCLIProfile
+	case strings.Contains(path, EndpointOAuthProfile):
+		return EndpointOAuthProfile
+	case strings.Contains(path, EndpointOAuthUsage):
+		return EndpointOAuthUsage
+	case strings.Contains(path, EndpointOAuthRoles):
+		return EndpointOAuthRoles
+	case strings.Contains(path, EndpointOAuthCreateAPIKey):
+		return EndpointOAuthCreateAPIKey
+	case strings.Contains(path, EndpointBootstrap):
+		return EndpointBootstrap
+	case strings.Contains(path, EndpointUserSettings):
+		return EndpointUserSettings
+	case strings.Contains(path, EndpointManagedSettings):
+		return EndpointManagedSettings
+	case strings.Contains(path, EndpointPolicyLimits):
+		return EndpointPolicyLimits
 	default:
 		return path
 	}
@@ -77,7 +125,26 @@ func DeriveUpstreamEndpoint(inbound, rawRequestPath, platform string) string {
 		return EndpointResponses
 
 	case service.PlatformAnthropic:
-		return EndpointMessages
+		switch inbound {
+		case EndpointCountTokens:
+			return EndpointCountTokens
+		case EndpointFiles, EndpointFileContent:
+			return inbound
+		case EndpointSessions, EndpointSessionEvents, EndpointSessionArchive, EndpointSessionWS:
+			return inbound
+		case EndpointClaudeCLIProfile,
+			EndpointOAuthProfile,
+			EndpointOAuthUsage,
+			EndpointOAuthRoles,
+			EndpointOAuthCreateAPIKey,
+			EndpointBootstrap,
+			EndpointUserSettings,
+			EndpointManagedSettings,
+			EndpointPolicyLimits:
+			return inbound
+		default:
+			return EndpointMessages
+		}
 
 	case service.PlatformGemini:
 		return EndpointGeminiModels

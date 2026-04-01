@@ -151,14 +151,6 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 
-	// ⭐ 翻译中文请求内容为英文（隐藏用户语言特征，防止上游检测到中文用户）
-	if h.translationService != nil {
-		if translatedBody, wasTranslated := h.translationService.TranslateRequestBody(c.Request.Context(), body); wasTranslated {
-			body = translatedBody
-			c.Set("translation_applied", true)
-		}
-	}
-
 	setOpsRequestContext(c, "", false, body)
 
 	parsedReq, err := service.ParseGatewayRequest(body, domain.PlatformAnthropic)
@@ -1458,13 +1450,6 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	if len(body) == 0 {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
 		return
-	}
-
-	// ⭐ 翻译中文请求内容为英文（count_tokens 也需一致翻译）
-	if h.translationService != nil {
-		if translatedBody, _ := h.translationService.TranslateRequestBody(c.Request.Context(), body); len(translatedBody) > 0 {
-			body = translatedBody
-		}
 	}
 
 	setOpsRequestContext(c, "", false, body)

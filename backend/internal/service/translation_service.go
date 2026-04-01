@@ -13,8 +13,8 @@ import (
 	"github.com/tidwall/sjson"
 )
 
-// TranslationService 提供请求体中文→英文翻译功能，
-// 用于隐藏用户语言特征，防止上游检测到中文用户。
+// TranslationService 提供请求/响应中的可选文本翻译能力，
+// 用于本地化兼容场景，不作为默认网关链路的一部分。
 type TranslationService struct {
 	provider           TranslationProvider
 	cache              TranslationCache

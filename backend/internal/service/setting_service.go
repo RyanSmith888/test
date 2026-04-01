@@ -79,6 +79,8 @@ const backendModeCacheTTL = 60 * time.Second
 const backendModeErrorTTL = 5 * time.Second
 const backendModeDBTimeout = 5 * time.Second
 
+const SettingKeyClaudeCompatState = "claude_compat_state"
+
 // cachedGatewayForwardingSettings 缓存网关转发行为设置（进程内缓存，60s TTL）
 type cachedGatewayForwardingSettings struct {
 	fingerprintUnification bool
@@ -230,6 +232,28 @@ func (s *SettingService) SetOnS3UpdateCallback(callback func()) {
 // SetVersion sets the application version for injection into public settings
 func (s *SettingService) SetVersion(version string) {
 	s.version = version
+}
+
+func (s *SettingService) GetJSONSetting(ctx context.Context, key string, target any) error {
+	raw, err := s.settingRepo.GetValue(ctx, key)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(raw) == "" {
+		return ErrSettingNotFound
+	}
+	if err := json.Unmarshal([]byte(raw), target); err != nil {
+		return fmt.Errorf("unmarshal setting %s: %w", key, err)
+	}
+	return nil
+}
+
+func (s *SettingService) SetJSONSetting(ctx context.Context, key string, value any) error {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("marshal setting %s: %w", key, err)
+	}
+	return s.settingRepo.Set(ctx, key, string(raw))
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection

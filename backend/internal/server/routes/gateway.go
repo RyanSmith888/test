@@ -32,6 +32,9 @@ func RegisterGatewayRoutes(
 	opsErrorLogger := handler.OpsErrorLoggerMiddleware(opsService)
 	endpointNorm := handler.InboundEndpointMiddleware()
 
+	r.GET("/_health", h.Gateway.Health)
+	r.GET("/_verify", h.Gateway.Verify)
+
 	// 未分组 Key 拦截中间件（按协议格式区分错误响应）
 	requireGroupAnthropic := middleware.RequireGroupAssignment(settingService, middleware.AnthropicErrorWriter)
 	requireGroupGoogle := middleware.RequireGroupAssignment(settingService, middleware.GoogleErrorWriter)
@@ -69,6 +72,15 @@ func RegisterGatewayRoutes(
 		})
 		gateway.GET("/models", h.Gateway.Models)
 		gateway.GET("/usage", h.Gateway.Usage)
+		gateway.GET("/files", h.Gateway.ListFiles)
+		gateway.POST("/files", h.Gateway.UploadFile)
+		gateway.GET("/files/:file_id", h.Gateway.GetFile)
+		gateway.GET("/files/:file_id/content", h.Gateway.FileContent)
+		gateway.POST("/sessions", h.Gateway.CreateSession)
+		gateway.GET("/sessions/:id", h.Gateway.GetSession)
+		gateway.POST("/sessions/:id/archive", h.Gateway.ArchiveSession)
+		gateway.GET("/sessions/:id/events", h.Gateway.SessionEvents)
+		gateway.GET("/sessions/ws/:id/subscribe", h.Gateway.SessionWebSocket)
 		// OpenAI Responses API: auto-route based on group platform
 		gateway.POST("/responses", func(c *gin.Context) {
 			if getGroupPlatform(c) == service.PlatformOpenAI {
@@ -132,6 +144,25 @@ func RegisterGatewayRoutes(
 
 	// Antigravity 模型列表
 	r.GET("/antigravity/models", gin.HandlerFunc(apiKeyAuth), requireGroupAnthropic, h.Gateway.AntigravityModels)
+
+	anthropicCompatAPI := r.Group("/api")
+	anthropicCompatAPI.Use(clientRequestID)
+	anthropicCompatAPI.Use(opsErrorLogger)
+	anthropicCompatAPI.Use(endpointNorm)
+	anthropicCompatAPI.Use(gin.HandlerFunc(apiKeyAuth))
+	anthropicCompatAPI.Use(requireGroupAnthropic)
+	{
+		anthropicCompatAPI.GET("/claude_cli_profile", h.Gateway.ClaudeCLIProfile)
+		anthropicCompatAPI.GET("/claude_cli/bootstrap", h.Gateway.ClaudeBootstrap)
+		anthropicCompatAPI.GET("/oauth/profile", h.Gateway.OAuthProfile)
+		anthropicCompatAPI.GET("/oauth/usage", h.Gateway.OAuthUsage)
+		anthropicCompatAPI.GET("/oauth/claude_cli/roles", h.Gateway.OAuthRoles)
+		anthropicCompatAPI.POST("/oauth/claude_cli/create_api_key", h.Gateway.OAuthCreateAPIKey)
+		anthropicCompatAPI.GET("/claude_code/user_settings", h.Gateway.GetUserSettings)
+		anthropicCompatAPI.PUT("/claude_code/user_settings", h.Gateway.PutUserSettings)
+		anthropicCompatAPI.GET("/claude_code/settings", h.Gateway.ManagedSettings)
+		anthropicCompatAPI.GET("/claude_code/policy_limits", h.Gateway.PolicyLimits)
+	}
 
 	// Antigravity 专用路由（仅使用 antigravity 账户，不混合调度）
 	antigravityV1 := r.Group("/antigravity/v1")

@@ -88,7 +88,7 @@ type Config struct {
 
 // TranslationConfig 翻译服务配置
 type TranslationConfig struct {
-	// Enabled: 是否启用翻译服务（将中文请求翻译为英文发送给上游）
+	// Enabled: 是否启用翻译服务（用于用户可见的本地化辅助；默认关闭）
 	Enabled bool `mapstructure:"enabled"`
 	// AliyunAccessKeyID: 阿里云 AccessKey ID
 	AliyunAccessKeyID string `mapstructure:"aliyun_access_key_id"`
@@ -468,7 +468,7 @@ type GatewayConfig struct {
 	// Scheduling: 账号调度相关配置
 	Scheduling GatewaySchedulingConfig `mapstructure:"scheduling"`
 
-	// TLSFingerprint: TLS指纹伪装配置
+	// TLSFingerprint: TLS 指纹模板配置（高风险，默认关闭）
 	TLSFingerprint TLSFingerprintConfig `mapstructure:"tls_fingerprint"`
 
 	// UsageRecord: 使用量记录异步队列配置（有界队列 + 固定 worker）
@@ -483,20 +483,18 @@ type GatewayConfig struct {
 	// 对 role:"user" 的真实用户消息实施账号级串行化 + RPM 自适应延迟
 	UserMessageQueue UserMessageQueueConfig `mapstructure:"user_message_queue"`
 
-	// ⭐ 虚拟身份：为每个账号生成独立的虚拟身份（User-Agent/OS/Arch 等）
-	// 启用后，不同账号会使用不同的请求指纹，避免批量聚合特征
+	// 虚拟身份：为每个账号生成独立的请求模板（默认关闭）
 	EnableVirtualIdentity bool `mapstructure:"enable_virtual_identity"`
 
-	// ⭐ 请求时间随机化：根据账号 ID 分散请求时间
-	// 启用后，每个请求会根据账号 ID 产生 0-RequestDelayMaxMs 的延迟
+	// 请求时间随机化：为请求增加少量抖动（默认关闭）
 	EnableRequestDelay bool `mapstructure:"enable_request_delay"`
 	// RequestDelayMaxMs: 最大延迟毫秒数（默认 200）
 	RequestDelayMaxMs int `mapstructure:"request_delay_max_ms"`
 
-	// ⭐ 账号级速率限制：为每个账号设置独立的速率限制
+	// 账号级速率限制：为每个账号设置独立的速率限制
 	EnableAccountRateLimit bool `mapstructure:"enable_account_rate_limit"`
 
-	// ⭐ 动态并发调整：根据账号健康状态动态调整并发数
+	// 动态并发调整：根据账号健康状态动态调整并发数
 	EnableDynamicConcurrency bool `mapstructure:"enable_dynamic_concurrency"`
 }
 
@@ -1484,7 +1482,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.usage_record.auto_scale_cooldown_seconds", 10)
 	viper.SetDefault("gateway.user_group_rate_cache_ttl_seconds", 30)
 	viper.SetDefault("gateway.models_list_cache_ttl_seconds", 15)
-	// TLS指纹伪装配置（默认关闭，需要账号级别单独启用）
+	// TLS 指纹配置（默认关闭，需要显式开启）
 	// 用户消息串行队列默认值
 	viper.SetDefault("gateway.user_message_queue.enabled", false)
 	viper.SetDefault("gateway.user_message_queue.lock_ttl_ms", 120000)
@@ -1493,7 +1491,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.user_message_queue.max_delay_ms", 2000)
 	viper.SetDefault("gateway.user_message_queue.cleanup_interval_seconds", 60)
 
-	viper.SetDefault("gateway.tls_fingerprint.enabled", true)
+	viper.SetDefault("gateway.tls_fingerprint.enabled", false)
 	viper.SetDefault("concurrency.ping_interval", 10)
 
 	// Sora 直连配置
